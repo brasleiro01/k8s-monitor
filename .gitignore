@@ -1,5 +1,6 @@
 # Credenciais — NUNCA commitar
 .env
+k8s/04-secrets.yaml
 
 # Postmortems gerados em runtime
 postmortems/

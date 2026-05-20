@@ -35,7 +35,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: k8s-monitor-secrets
-                  key: database-url
+                  key: DATABASE_URL
             - name: NAMESPACES
               value: ""
             - name: GEMINI_MODEL
