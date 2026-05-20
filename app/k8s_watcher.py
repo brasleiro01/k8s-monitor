@@ -19,6 +19,11 @@ _CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 _k8s_host: str = ""
 _k8s_port: str = "443"
 _k8s_token: str = ""
+_known_namespaces: set[str] = set()
+
+
+def get_known_namespaces() -> list[str]:
+    return sorted(_known_namespaces)
 
 
 def load_k8s_config():
@@ -159,6 +164,7 @@ class K8sLogWatcher:
                     pod_key = f"{pod_ns}/{pod_name}"
 
                     if event_type in ("ADDED", "MODIFIED"):
+                        _known_namespaces.add(pod_ns)
                         phase = pod.status.phase if pod.status else None
                         if phase == "Running" and pod_ns not in EXCLUDE_NAMESPACES:
                             self._ensure_pod_watched(pod_name, pod_ns, pod_key)

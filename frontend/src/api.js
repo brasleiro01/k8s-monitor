@@ -22,6 +22,44 @@ export async function reopenIncident(id) {
   return res.json();
 }
 
+export async function fetchNamespaces() {
+  const res = await fetch(`${BASE}/namespaces`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function streamNamespaceCheck(namespace, { onProgress, onResult, onError }) {
+  const res = await fetch(`${BASE}/check-namespace`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ namespace }),
+  });
+  if (!res.ok) throw new Error('Falha ao iniciar verificação');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const chunks = buf.split('\n\n');
+    buf = chunks.pop();
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+      const evtMatch = chunk.match(/^event:\s*(\w+)/m);
+      const dataMatch = chunk.match(/^data:\s*(.+)/m);
+      if (!evtMatch || !dataMatch) continue;
+      let data;
+      try { data = JSON.parse(dataMatch[1]); } catch { continue; }
+      if (evtMatch[1] === 'progress') onProgress?.(data);
+      else if (evtMatch[1] === 'result') onResult?.(data);
+      else if (evtMatch[1] === 'error') onError?.(data.message);
+    }
+  }
+}
+
 export function subscribeToEvents(onIncident, onUpdate) {
   const source = new EventSource(`${BASE}/events`);
   source.addEventListener('incident', e => onIncident(JSON.parse(e.data)));

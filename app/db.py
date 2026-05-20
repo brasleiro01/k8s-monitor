@@ -236,6 +236,19 @@ def get_postmortem_content(incident_id: str) -> Optional[dict]:
 # Helpers                                                             #
 # ------------------------------------------------------------------ #
 
+def load_namespaces() -> list[str]:
+    conn = _get_conn()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT namespace FROM incidents ORDER BY namespace")
+            return [row[0] for row in cur.fetchall()]
+    except Exception as exc:
+        logger.error("Erro ao carregar namespaces: %s", exc)
+        return []
+
+
 def _row_to_incident(r: dict) -> dict:
     return {
         "id":                    r["id"],

@@ -5,6 +5,7 @@ import Filters from './components/Filters.jsx';
 import NamespaceGroup from './components/NamespaceGroup.jsx';
 import PostmortemsDrawer from './components/PostmortemsDrawer.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
+import NamespaceChecker from './components/NamespaceChecker.jsx';
 
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '', dateFrom: '', dateTo: '' };
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -136,6 +137,7 @@ export default function App({ googleClientId = '' }) {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [checkerOpen, setCheckerOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +228,14 @@ export default function App({ googleClientId = '' }) {
 
         <div className="topbar-right">
           <button
+            className={`btn-checker${checkerOpen ? ' active' : ''}`}
+            onClick={() => setCheckerOpen(o => !o)}
+            title="Verificação manual de namespace"
+          >
+            🔍 Verificar
+          </button>
+
+          <button
             className={`btn-postmortems${drawerOpen ? ' active' : ''}`}
             onClick={() => setDrawerOpen(o => !o)}
             title="Histórico de resoluções"
@@ -264,6 +274,10 @@ export default function App({ googleClientId = '' }) {
           </div>
         </div>
       </header>
+
+      {checkerOpen && (
+        <NamespaceChecker onClose={() => setCheckerOpen(false)} />
+      )}
 
       {drawerOpen && (
         <PostmortemsDrawer

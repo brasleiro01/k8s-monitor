@@ -20,8 +20,9 @@ from config import (
     LOG_LEVEL,
     NAMESPACES,
 )
-from k8s_watcher import load_k8s_config
+from k8s_watcher import get_known_namespaces, load_k8s_config
 from monitor import Monitor
+from namespace_checker import check_namespace_stream
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -110,7 +111,7 @@ app = FastAPI(title="k8s-monitor", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -193,6 +194,54 @@ async def reopen_incident(incident_id: str):
     await asyncio.to_thread(db.reopen_incident, incident_id)
     broadcast("update", {"type": "reopened", "id": incident_id})
     return {"ok": True}
+
+
+@app.get("/api/namespaces")
+async def list_namespaces():
+    watched = get_known_namespaces()
+    from_db = await asyncio.to_thread(db.load_namespaces)
+    return sorted(set(watched) | set(from_db))
+
+
+class CheckNamespaceBody(BaseModel):
+    namespace: str
+
+
+@app.post("/api/check-namespace")
+async def check_namespace(body: CheckNamespaceBody):
+    ns = body.namespace.strip()
+    if not ns:
+        raise HTTPException(400, "Namespace não informado")
+
+    q: asyncio.Queue = asyncio.Queue()
+    current_loop = asyncio.get_event_loop()
+
+    def run():
+        try:
+            for chunk in check_namespace_stream(ns):
+                current_loop.call_soon_threadsafe(q.put_nowait, chunk)
+        except Exception as e:
+            current_loop.call_soon_threadsafe(
+                q.put_nowait,
+                f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n",
+            )
+        finally:
+            current_loop.call_soon_threadsafe(q.put_nowait, None)
+
+    threading.Thread(target=run, daemon=True).start()
+
+    async def stream():
+        while True:
+            chunk = await q.get()
+            if chunk is None:
+                break
+            yield chunk
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @app.get("/api/incidents/{incident_id}/postmortem")
