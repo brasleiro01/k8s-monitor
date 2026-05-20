@@ -63,7 +63,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: k8s-monitor-secrets
-                  key: database-url
+                  key: DATABASE_URL
             - name: DB_SSL
               value: "1"
             - name: GOOGLE_CLIENT_ID

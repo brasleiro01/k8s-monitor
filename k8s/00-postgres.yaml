@@ -3,19 +3,6 @@
 # Deploy interno no cluster — acesso apenas via ClusterIP
 # ============================================================
 
-# -- Secret com credenciais do banco -----------------------
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-k8s-monitor-secret
-  namespace: k8s-monitor
-type: Opaque
-stringData:
-  POSTGRES_DB:       k8smonitor
-  POSTGRES_USER:     k8smonitor
-  POSTGRES_PASSWORD: M@rcus2031
-  DATABASE_URL:      postgresql://k8smonitor:M@rcus2031@postgres-k8s-monitor:5432/k8smonitor
----
 # -- PVC para dados do Postgres ----------------------------
 apiVersion: v1
 kind: PersistentVolumeClaim
