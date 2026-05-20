@@ -13,8 +13,8 @@ type: Opaque
 stringData:
   POSTGRES_DB:       k8smonitor
   POSTGRES_USER:     k8smonitor
-  POSTGRES_PASSWORD: TROQUE_ESTA_SENHA_AQUI
-  DATABASE_URL:      postgresql://k8smonitor:TROQUE_ESTA_SENHA_AQUI@postgres-k8s-monitor:5432/k8smonitor
+  POSTGRES_PASSWORD: M@rcus2031
+  DATABASE_URL:      postgresql://k8smonitor:M@rcus2031@postgres-k8s-monitor:5432/k8smonitor
 ---
 # -- PVC para dados do Postgres ----------------------------
 apiVersion: v1

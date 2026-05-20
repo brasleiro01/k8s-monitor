@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 env:
   MONITOR_IMAGE: vinnioliver66/k8s-monitor
   UI_IMAGE: vinnioliver66/k8s-monitor-ui
@@ -97,12 +100,45 @@ jobs:
           cache-to: type=gha,scope=ui,mode=max
 
   # ------------------------------------------------------------------ #
+  # Atualizar tags nos manifestos K8s                                    #
+  # ------------------------------------------------------------------ #
+  update-manifests:
+    name: Atualizar manifestos K8s
+    runs-on: ubuntu-latest
+    needs: [version, build-monitor, build-ui]
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Atualizar imagem do monitor em k8s/02-api.yaml
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          sed -i "s|image: ${{ env.MONITOR_IMAGE }}:.*|image: ${{ env.MONITOR_IMAGE }}:${TAG}|" k8s/02-api.yaml
+
+      - name: Atualizar imagem do UI em k8s/03-ui.yaml
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          sed -i "s|image: ${{ env.UI_IMAGE }}:.*|image: ${{ env.UI_IMAGE }}:${TAG}|" k8s/03-ui.yaml
+
+      - name: Commit e push
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/02-api.yaml k8s/03-ui.yaml
+          git diff --staged --quiet && echo "Nenhuma alteração nos manifestos." || \
+            git commit -m "ci: atualiza imagens para ${TAG}" && git push
+
+  # ------------------------------------------------------------------ #
   # Summary                                                              #
   # ------------------------------------------------------------------ #
   summary:
     name: Resumo
     runs-on: ubuntu-latest
-    needs: [version, build-monitor, build-ui]
+    needs: [version, update-manifests]
     if: github.event_name != 'pull_request'
     steps:
       - name: Exibir versão publicada
@@ -113,3 +149,5 @@ jobs:
           echo "|--------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| \`vinnioliver66/k8s-monitor\` | \`${{ needs.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| \`vinnioliver66/k8s-monitor-ui\` | \`${{ needs.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Manifestos atualizados: \`k8s/02-api.yaml\` e \`k8s/03-ui.yaml\`" >> $GITHUB_STEP_SUMMARY
