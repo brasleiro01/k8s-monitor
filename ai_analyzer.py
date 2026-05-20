@@ -4,6 +4,7 @@ from typing import Optional
 
 import google.generativeai as genai
 
+import rule_analyzer
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
@@ -22,14 +23,9 @@ Ao receber um erro de pod Kubernetes, analise o erro E o contexto de log forneci
 
 REGRAS OBRIGATÓRIAS para o campo "immediate_action":
 - Forneça SOLUÇÕES CONCRETAS e ESPECÍFICAS para resolver o problema identificado no erro
-- Inclua comandos kubectl, configurações ou correções reais quando aplicável
-- NÃO use passos genéricos como "verificar logs" ou "inspecionar eventos" — o usuário já sabe fazer isso
-- Baseie-se no erro real: se um diretório não existe, diga como criá-lo; se um volume não está montado, diga como corrigir; se há OOM, diga como ajustar os limites
-- Exemplos de boas ações imediatas:
-  * "Criar o diretório ausente: kubectl exec -n NAMESPACE POD -- mkdir -p /caminho/ausente"
-  * "Corrigir o PVC desconectado: kubectl describe pvc NOME -n NAMESPACE para identificar o problema e recriar se necessário"
-  * "Aumentar o limite de memória no deployment: kubectl set resources deployment/NOME --limits=memory=512Mi -n NAMESPACE"
-  * "Reiniciar o deployment após a correção: kubectl rollout restart deployment/NOME -n NAMESPACE"
+- Inclua comandos kubectl reais com os nomes de pod e namespace fornecidos quando possível
+- NÃO use passos genéricos como "verificar logs" ou "inspecionar eventos"
+- Baseie-se no erro real: se um diretório não existe, diga como criá-lo; se há OOM, diga como ajustar limites; se a conexão é recusada, diga como verificar o serviço
 
 Guia de severidade:
 - critical: serviço fora do ar, risco de perda de dados, brecha de segurança
@@ -53,6 +49,21 @@ class AIAnalyzer:
         )
 
     def analyze(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
+        # 1. Tenta análise com Gemini
+        result = self._call_gemini(pod_name, namespace, error_info)
+        if result:
+            return result
+
+        # 2. Fallback: análise baseada em regras (contextual, não genérica)
+        logger.warning("Usando análise por regras para %s/%s", namespace, pod_name)
+        result = rule_analyzer.analyze(pod_name, namespace, error_info)
+        if result:
+            return result
+
+        # 3. Último recurso: genérico mínimo
+        return self._last_resort(error_info)
+
+    def _call_gemini(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
         context_text = "\n".join(error_info.get("context", []))
         user_message = (
             f"Pod: {pod_name}\n"
@@ -60,42 +71,51 @@ class AIAnalyzer:
             f"Linha de erro: {error_info['error_line']}\n"
             f"Contexto do log (linhas anteriores ao erro):\n{context_text}"
         )
-
         try:
             response = self._model.generate_content(user_message)
             result = json.loads(response.text)
-            logger.info("Análise Gemini concluída para %s/%s — severidade: %s", namespace, pod_name, result.get("severity"))
+            logger.info(
+                "Gemini analisou %s/%s — severidade: %s",
+                namespace, pod_name, result.get("severity")
+            )
+            result["_source"] = "gemini"
             return result
-        except json.JSONDecodeError as e:
-            logger.warning("Gemini retornou resposta não-JSON para %s: %s | Resposta: %s", pod_name, e, getattr(response, 'text', '')[:200])
-            return self._extract_json_fallback(getattr(response, 'text', ''))
+        except json.JSONDecodeError:
+            raw = getattr(response, 'text', '')
+            logger.warning(
+                "Gemini retornou JSON inválido para %s/%s — tentando extração. Resposta: %.300s",
+                namespace, pod_name, raw
+            )
+            return self._extract_json(raw)
         except Exception as e:
-            logger.error("Erro na API Gemini para %s/%s: %s", namespace, pod_name, e)
-            return self._fallback_analysis(error_info)
+            logger.error(
+                "Falha na API Gemini para %s/%s: %s: %s",
+                namespace, pod_name, type(e).__name__, e
+            )
+            return None
 
-    def _extract_json_fallback(self, text: str) -> Optional[dict]:
+    def _extract_json(self, text: str) -> Optional[dict]:
         start = text.find("{")
         end = text.rfind("}") + 1
         if start != -1 and end > start:
             try:
-                return json.loads(text[start:end])
+                result = json.loads(text[start:end])
+                result["_source"] = "gemini_extracted"
+                return result
             except json.JSONDecodeError:
                 pass
-        return self._fallback_analysis({})
+        return None
 
-    def _fallback_analysis(self, error_info: dict) -> dict:
+    def _last_resort(self, error_info: dict) -> dict:
         return {
-            "root_cause": "Análise automática indisponível — verifique os logs do pod para mais detalhes",
+            "root_cause": "Análise automática indisponível",
             "severity": "high",
             "immediate_action": [
-                "Verificar os logs completos: kubectl logs -n NAMESPACE POD --previous",
-                "Descrever o pod para ver eventos: kubectl describe pod POD -n NAMESPACE",
-                "Verificar o status dos recursos: kubectl get events -n NAMESPACE --sort-by=.lastTimestamp",
+                "Verificar os logs do pod com: kubectl logs POD -n NAMESPACE --previous",
+                "Ver eventos: kubectl get events -n NAMESPACE --sort-by=.lastTimestamp",
             ],
-            "prevention": [
-                "Configurar health checks (liveness/readiness probes) adequados",
-                "Definir limites de recursos (requests/limits) para o pod",
-            ],
+            "prevention": ["Configurar health checks e limites de recursos adequados"],
             "estimated_impact": "Indeterminado — investigação manual necessária",
-            "summary": f"Erro detectado no pod — análise de IA indisponível: {error_info.get('error_line', '')[:100]}",
+            "summary": f"Erro no pod: {error_info.get('error_line', '')[:120]}",
+            "_source": "last_resort",
         }
