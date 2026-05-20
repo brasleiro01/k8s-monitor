@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { resolveIncident, reopenIncident } from '../api.js';
 import ResolutionModal from './ResolutionModal.jsx';
+import PostmortemViewer from './PostmortemViewer.jsx';
 
 function timeAgo(ts) {
   const diff = Math.floor(Date.now() / 1000 - ts);
@@ -16,6 +17,7 @@ export default function IncidentCard({ incident, onStatusChange }) {
   const [open, setOpen] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showViewer, setShowViewer] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleConfirmResolve({ description, resolution_time }) {
@@ -52,6 +54,13 @@ export default function IncidentCard({ incident, onStatusChange }) {
           incident={incident}
           onConfirm={handleConfirmResolve}
           onCancel={() => setShowModal(false)}
+        />
+      )}
+      {showViewer && (
+        <PostmortemViewer
+          incidentId={incident.id}
+          filename={incident.postmortem_file}
+          onClose={() => setShowViewer(false)}
         />
       )}
 
@@ -150,9 +159,14 @@ export default function IncidentCard({ incident, onStatusChange }) {
                     {loading ? 'Salvando...' : '↩ Reabrir'}
                   </button>
                   {incident.postmortem_file && (
-                    <button className="btn btn-postmortem" onClick={handleDownloadPostmortem}>
-                      📄 Baixar postmortem
-                    </button>
+                    <>
+                      <button className="btn btn-postmortem" onClick={() => setShowViewer(true)}>
+                        👁 Visualizar
+                      </button>
+                      <button className="btn btn-postmortem" onClick={handleDownloadPostmortem}>
+                        📄 Baixar
+                      </button>
+                    </>
                   )}
                 </>
               )}

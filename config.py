@@ -5,7 +5,8 @@ EXCLUDE_NAMESPACES = [n.strip() for n in os.environ.get("EXCLUDE_NAMESPACES", "k
 
 LOG_LINES_TAIL = int(os.environ.get("LOG_LINES_TAIL", "100"))
 CONTEXT_LINES = int(os.environ.get("CONTEXT_LINES", "10"))
-ERROR_COOLDOWN_SECONDS = int(os.environ.get("ERROR_COOLDOWN_SECONDS", "300"))
+ERROR_COOLDOWN_SECONDS = int(os.environ.get("ERROR_COOLDOWN_SECONDS", "3600"))  # 1h entre alertas do mesmo erro
+MAX_DAILY_ALERTS = int(os.environ.get("MAX_DAILY_ALERTS", "5"))               # máx 5 alertas/dia por erro
 
 ERROR_PATTERNS = [
     r"(?i)\bERROR\b",

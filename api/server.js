@@ -224,6 +224,7 @@ app.patch('/api/incidents/:id/reopen', (req, res) => {
 
 app.get('/api/incidents/:id/postmortem', (req, res) => {
   const { id } = req.params;
+  const view = req.query.view === '1';
   const resolved = loadResolved();
   const entry = resolved[id];
   if (!entry || !entry.postmortem_file) return res.status(404).json({ error: 'Postmortem não gerado ainda' });
@@ -231,9 +232,15 @@ app.get('/api/incidents/:id/postmortem', (req, res) => {
   const filepath = path.join(INCIDENTS_DIR, entry.postmortem_file);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
 
+  const content = fs.readFileSync(filepath, 'utf-8');
   res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${entry.postmortem_file}"`);
-  res.send(fs.readFileSync(filepath));
+
+  if (view) {
+    res.setHeader('Content-Disposition', `inline; filename="${entry.postmortem_file}"`);
+  } else {
+    res.setHeader('Content-Disposition', `attachment; filename="${entry.postmortem_file}"`);
+  }
+  res.send(content);
 });
 
 app.get('/api/events', (req, res) => {

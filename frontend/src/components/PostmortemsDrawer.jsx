@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import PostmortemViewer from './PostmortemViewer.jsx';
 
 const SEV_COLORS = {
   critical: 'var(--critical)',
@@ -19,16 +20,18 @@ function fmtDate(iso) {
 
 export default function PostmortemsDrawer({ incidents, onClose }) {
   const drawerRef = useRef(null);
+  const [viewingId, setViewingId] = useState(null);
+  const viewingIncident = viewingId ? incidents.find(i => i.id === viewingId) : null;
 
   const postmortems = incidents
     .filter(i => i.resolved && i.postmortem_file)
     .sort((a, b) => new Date(b.resolvedAt) - new Date(a.resolvedAt));
 
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) { if (e.key === 'Escape' && !viewingId) onClose(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, viewingId]);
 
   // Fecha ao clicar fora do drawer
   function handleBackdrop(e) {
@@ -36,6 +39,14 @@ export default function PostmortemsDrawer({ incidents, onClose }) {
   }
 
   return (
+    <>
+    {viewingIncident && (
+      <PostmortemViewer
+        incidentId={viewingIncident.id}
+        filename={viewingIncident.postmortem_file}
+        onClose={() => setViewingId(null)}
+      />
+    )}
     <div className="drawer-backdrop" onClick={handleBackdrop}>
       <aside className="drawer" ref={drawerRef}>
         <div className="drawer-header">
@@ -82,19 +93,28 @@ export default function PostmortemsDrawer({ incidents, onClose }) {
                   </div>
                 )}
 
-                <a
-                  className="pm-download"
-                  href={`/api/incidents/${i.id}/postmortem`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  📄 Baixar postmortem (.md)
-                </a>
+                <div className="pm-actions">
+                  <button
+                    className="pm-btn-view"
+                    onClick={() => setViewingId(i.id)}
+                  >
+                    👁 Visualizar
+                  </button>
+                  <a
+                    className="pm-download"
+                    href={`/api/incidents/${i.id}/postmortem`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    📄 Baixar
+                  </a>
+                </div>
               </div>
             ))
           )}
         </div>
       </aside>
     </div>
+    </>
   );
 }
