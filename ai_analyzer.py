@@ -2,9 +2,9 @@ import json
 import logging
 from typing import Optional
 
-import anthropic
+import google.generativeai as genai
 
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ When given a Kubernetes pod error, analyze it and respond ONLY with a valid JSON
   "immediate_action": ["step 1", "step 2", "step 3"],
   "prevention": ["measure 1", "measure 2"],
   "estimated_impact": "description of blast radius and affected users/services",
-  "summary": "one-sentence human-readable summary for Slack notification"
+  "summary": "one-sentence human-readable summary for notification"
 }
 
 Severity guide:
@@ -29,14 +29,15 @@ Severity guide:
 
 class AIAnalyzer:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        self._system_with_cache = [
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
+        genai.configure(api_key=GEMINI_API_KEY)
+        self._model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL,
+            system_instruction=SYSTEM_PROMPT,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=0.2,
+            ),
+        )
 
     def analyze(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
         context_text = "\n".join(error_info.get("context", []))
@@ -48,19 +49,13 @@ class AIAnalyzer:
         )
 
         try:
-            response = self.client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=1024,
-                system=self._system_with_cache,
-                messages=[{"role": "user", "content": user_message}],
-            )
-            raw = response.content[0].text.strip()
-            return json.loads(raw)
+            response = self._model.generate_content(user_message)
+            return json.loads(response.text)
         except json.JSONDecodeError:
-            logger.warning("Claude returned non-JSON response, attempting extraction")
-            return self._extract_json_fallback(raw)
-        except anthropic.APIError as e:
-            logger.error("Claude API error: %s", e)
+            logger.warning("Gemini returned non-JSON, attempting extraction")
+            return self._extract_json_fallback(response.text)
+        except Exception as e:
+            logger.error("Gemini API error: %s", e)
             return self._fallback_analysis(error_info)
 
     def _extract_json_fallback(self, text: str) -> Optional[dict]:
@@ -77,8 +72,15 @@ class AIAnalyzer:
         return {
             "root_cause": "Unable to determine root cause automatically",
             "severity": "high",
-            "immediate_action": ["Check pod logs manually", "Inspect pod events with kubectl describe", "Check resource limits"],
-            "prevention": ["Review application error handling", "Set up proper resource limits"],
+            "immediate_action": [
+                "Check pod logs manually",
+                "Inspect pod events with kubectl describe",
+                "Check resource limits",
+            ],
+            "prevention": [
+                "Review application error handling",
+                "Set up proper resource limits",
+            ],
             "estimated_impact": "Unknown — manual investigation required",
             "summary": f"Error detected: {error_info.get('error_line', 'unknown error')[:100]}",
         }

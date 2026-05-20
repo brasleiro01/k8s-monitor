@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postmortems-pvc
-  namespace: monitoring
+  namespace: k8s-monitor
 spec:
   accessModes:
     - ReadWriteOnce
@@ -14,7 +14,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: k8s-monitor
-  namespace: monitoring
+  namespace: k8s-monitor
   labels:
     app: k8s-monitor
 spec:
@@ -30,14 +30,14 @@ spec:
       serviceAccountName: k8s-monitor
       containers:
         - name: monitor
-          image: your-registry/k8s-monitor:latest
+          image: vinnioliver66/k8s-monitor:latest
           imagePullPolicy: Always
           env:
-            - name: ANTHROPIC_API_KEY
+            - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: k8s-monitor-secrets
-                  key: anthropic-api-key
+                  key: gemini-api-key
             - name: DISCORD_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
@@ -45,8 +45,8 @@ spec:
                   key: discord-webhook-url
             - name: NAMESPACES
               value: ""  # empty = watch all namespaces
-            - name: CLAUDE_MODEL
-              value: "claude-sonnet-4-6"
+            - name: GEMINI_MODEL
+              value: "gemini-2.0-flash"
             - name: ERROR_COOLDOWN_SECONDS
               value: "300"
             - name: CONTEXT_LINES

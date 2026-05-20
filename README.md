@@ -116,10 +116,10 @@ Pods K8s → Logs → Detector de erros → Claude AI → Discord + Postmortem .
 
 | Variável | Obrigatório | Padrão | Descrição |
 |----------|-------------|--------|-----------|
-| `ANTHROPIC_API_KEY` | ✅ | — | Chave da API Anthropic |
+| `GEMINI_API_KEY` | ✅ | — | Chave da API Google Gemini (Google AI Studio) |
 | `DISCORD_WEBHOOK_URL` | ✅ | — | URL do webhook do Discord |
 | `NAMESPACES` | — | *(todos)* | Namespaces a monitorar, separados por vírgula. Ex: `default,production` |
-| `CLAUDE_MODEL` | — | `claude-sonnet-4-6` | Modelo Claude a usar |
+| `GEMINI_MODEL` | — | `gemini-2.0-flash` | Modelo Gemini: `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-1.5-pro` |
 | `ERROR_COOLDOWN_SECONDS` | — | `300` | Tempo mínimo (em segundos) entre alertas do mesmo erro |
 | `CONTEXT_LINES` | — | `10` | Linhas de log capturadas antes de cada erro |
 | `LOG_LINES_TAIL` | — | `100` | Linhas lidas ao conectar num pod pela primeira vez |
@@ -297,7 +297,7 @@ Isso cria:
 ```bash
 kubectl create secret generic k8s-monitor-secrets \
   --namespace monitoring \
-  --from-literal=anthropic-api-key=sk-ant-... \
+  --from-literal=gemini-api-key=AIza... \
   --from-literal=discord-webhook-url=https://discord.com/api/webhooks/...
 ```
 

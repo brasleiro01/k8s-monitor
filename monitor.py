@@ -4,8 +4,8 @@ import sys
 import threading
 
 from config import (
-    ANTHROPIC_API_KEY,
     DISCORD_WEBHOOK_URL,
+    GEMINI_API_KEY,
     LOG_LEVEL,
     NAMESPACES,
     POSTMORTEM_DIR,
@@ -75,8 +75,8 @@ class Monitor:
 
 def main():
     missing = []
-    if not ANTHROPIC_API_KEY:
-        missing.append("ANTHROPIC_API_KEY")
+    if not GEMINI_API_KEY:
+        missing.append("GEMINI_API_KEY")
     if not DISCORD_WEBHOOK_URL:
         missing.append("DISCORD_WEBHOOK_URL")
     if missing:
