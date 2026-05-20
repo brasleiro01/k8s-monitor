@@ -60,7 +60,7 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
             ${{ env.IMAGE }}:latest
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           cache-from: type=gha,scope=app
           cache-to: type=gha,scope=app,mode=max
 
