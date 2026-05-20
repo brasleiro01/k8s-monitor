@@ -10,8 +10,7 @@ permissions:
   contents: write
 
 env:
-  MONITOR_IMAGE: vinnioliver66/k8s-monitor
-  UI_IMAGE: vinnioliver66/k8s-monitor-ui
+  IMAGE: vinnioliver66/k8s-monitor
 
 jobs:
   version:
@@ -32,44 +31,10 @@ jobs:
           echo "Versão gerada: ${TAG}"
 
   # ------------------------------------------------------------------ #
-  # Monitor Python                                                       #
+  # Build único — Python FastAPI + React (multi-stage)                  #
   # ------------------------------------------------------------------ #
-  build-monitor:
-    name: Monitor (Python)
-    runs-on: ubuntu-latest
-    needs: version
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./monitor
-          file: ./monitor/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.MONITOR_IMAGE }}:${{ needs.version.outputs.tag }}
-            ${{ env.MONITOR_IMAGE }}:latest
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha,scope=monitor
-          cache-to: type=gha,scope=monitor,mode=max
-
-  # ------------------------------------------------------------------ #
-  # Dashboard (React + Node.js)                                          #
-  # ------------------------------------------------------------------ #
-  build-ui:
-    name: Dashboard (React + Node.js)
+  build:
+    name: Build & Push
     runs-on: ubuntu-latest
     needs: version
     steps:
@@ -90,22 +55,22 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./frontend/Dockerfile
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.UI_IMAGE }}:${{ needs.version.outputs.tag }}
-            ${{ env.UI_IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
+            ${{ env.IMAGE }}:latest
           platforms: linux/amd64,linux/arm64
-          cache-from: type=gha,scope=ui
-          cache-to: type=gha,scope=ui,mode=max
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
 
   # ------------------------------------------------------------------ #
-  # Atualizar tags nos manifestos K8s                                    #
+  # Atualizar tag no manifesto K8s                                       #
   # ------------------------------------------------------------------ #
   update-manifests:
-    name: Atualizar manifestos K8s
+    name: Atualizar manifesto K8s
     runs-on: ubuntu-latest
-    needs: [version, build-monitor, build-ui]
+    needs: [version, build]
     if: github.event_name != 'pull_request'
     steps:
       - name: Checkout
@@ -113,24 +78,19 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Atualizar imagem do monitor em k8s/02-api.yaml
+      - name: Atualizar imagem em k8s/02-monitor.yaml
         run: |
           TAG="${{ needs.version.outputs.tag }}"
-          sed -i "s|image: ${{ env.MONITOR_IMAGE }}:.*|image: ${{ env.MONITOR_IMAGE }}:${TAG}|" k8s/02-api.yaml
-
-      - name: Atualizar imagem do UI em k8s/03-ui.yaml
-        run: |
-          TAG="${{ needs.version.outputs.tag }}"
-          sed -i "s|image: ${{ env.UI_IMAGE }}:.*|image: ${{ env.UI_IMAGE }}:${TAG}|" k8s/03-ui.yaml
+          sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${TAG}|" k8s/02-monitor.yaml
 
       - name: Commit e push
         run: |
           TAG="${{ needs.version.outputs.tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/02-api.yaml k8s/03-ui.yaml
-          git diff --staged --quiet && echo "Nenhuma alteração nos manifestos." || \
-            git commit -m "ci: atualiza imagens para ${TAG}" && git push
+          git add k8s/02-monitor.yaml
+          git diff --staged --quiet && echo "Nenhuma alteração." || \
+            git commit -m "ci: atualiza imagem para ${TAG}" && git push
 
   # ------------------------------------------------------------------ #
   # Summary                                                              #
@@ -143,11 +103,10 @@ jobs:
     steps:
       - name: Exibir versão publicada
         run: |
-          echo "### ✅ Imagens publicadas com sucesso" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Imagem publicada com sucesso" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Imagem | Tag |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| \`vinnioliver66/k8s-monitor\` | \`${{ needs.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`vinnioliver66/k8s-monitor-ui\` | \`${{ needs.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Manifestos atualizados: \`k8s/02-api.yaml\` e \`k8s/03-ui.yaml\`" >> $GITHUB_STEP_SUMMARY
+          echo "Manifesto atualizado: \`k8s/02-monitor.yaml\`" >> $GITHUB_STEP_SUMMARY

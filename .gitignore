@@ -16,7 +16,6 @@ venv/
 # Node
 node_modules/
 frontend/node_modules/
-api/node_modules/
 
 # Build React
 frontend/dist/

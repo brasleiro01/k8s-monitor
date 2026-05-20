@@ -5,12 +5,9 @@ EXCLUDE_NAMESPACES = [n.strip() for n in os.environ.get("EXCLUDE_NAMESPACES", "k
 
 LOG_LINES_TAIL = int(os.environ.get("LOG_LINES_TAIL", "100"))
 CONTEXT_LINES = int(os.environ.get("CONTEXT_LINES", "10"))
-ERROR_COOLDOWN_SECONDS = int(os.environ.get("ERROR_COOLDOWN_SECONDS", "3600"))  # 1h entre alertas do mesmo erro
-MAX_DAILY_ALERTS = int(os.environ.get("MAX_DAILY_ALERTS", "5"))               # máx 5 alertas/dia por erro
+ERROR_COOLDOWN_SECONDS = int(os.environ.get("ERROR_COOLDOWN_SECONDS", "3600"))
+MAX_DAILY_ALERTS = int(os.environ.get("MAX_DAILY_ALERTS", "5"))
 
-# Padrões que devem ser IGNORADOS mesmo que batam com ERROR_PATTERNS.
-# Separe múltiplos padrões com || no env var.
-# Exemplo: EXCLUDE_LOG_PATTERNS="disabling udev||health check"
 _raw_exclude = os.environ.get("EXCLUDE_LOG_PATTERNS", "")
 EXCLUDE_LOG_PATTERNS = [p.strip() for p in _raw_exclude.split("||") if p.strip()]
 
@@ -31,7 +28,7 @@ ERROR_PATTERNS = [
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
-
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+PORT = int(os.environ.get("PORT", "8000"))
