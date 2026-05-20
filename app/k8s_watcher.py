@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from typing import Callable
@@ -17,6 +18,31 @@ def load_k8s_config():
     except config.ConfigException:
         config.load_kube_config()
         logger.info("Using local kubeconfig")
+
+    _log_k8s_diagnostics()
+
+
+def _log_k8s_diagnostics():
+    """Loga informações de diagnóstico da conexão K8s ao iniciar."""
+    host = os.environ.get("KUBERNETES_SERVICE_HOST", "não definido")
+    port = os.environ.get("KUBERNETES_SERVICE_PORT", "não definido")
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    logger.info("[k8s] API server: %s:%s", host, port)
+    logger.info("[k8s] token: %s (%d bytes)",
+                "existe" if os.path.exists(token_path) else "NÃO ENCONTRADO",
+                os.path.getsize(token_path) if os.path.exists(token_path) else 0)
+    logger.info("[k8s] CA cert: %s",
+                "existe" if os.path.exists(ca_path) else "NÃO ENCONTRADO")
+
+    # Teste imediato de conectividade
+    try:
+        v1 = client.CoreV1Api()
+        v1.list_namespace(_request_timeout=5)
+        logger.info("[k8s] teste de conectividade: OK")
+    except Exception as e:
+        logger.error("[k8s] teste de conectividade FALHOU: %s", e)
 
 
 class K8sLogWatcher:
@@ -45,13 +71,14 @@ class K8sLogWatcher:
                 stop_event.set()
 
     def _watch_namespace(self, namespace: str):
-        v1 = client.CoreV1Api()
-        w = watch.Watch()
         ns_label = namespace or "all namespaces"
         logger.info("Watching pods in %s", ns_label)
 
         while self._running:
             try:
+                # Recria o cliente a cada tentativa para recarregar o token do disco
+                v1 = client.CoreV1Api()
+                w = watch.Watch()
                 stream = w.stream(
                     v1.list_namespaced_pod if namespace else v1.list_pod_for_all_namespaces,
                     *([namespace] if namespace else []),
@@ -100,11 +127,11 @@ class K8sLogWatcher:
             logger.debug("Stopped log watcher for %s", pod_key)
 
     def _stream_pod_logs(self, pod_name: str, namespace: str, pod_key: str, stop_event: threading.Event):
-        v1 = client.CoreV1Api()
-        w = watch.Watch()
-
         while not stop_event.is_set():
             try:
+                # Recria o cliente a cada tentativa para recarregar o token do disco
+                v1 = client.CoreV1Api()
+                w = watch.Watch()
                 stream = w.stream(
                     v1.read_namespaced_pod_log,
                     name=pod_name,

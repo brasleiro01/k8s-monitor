@@ -49,10 +49,18 @@ spec:
         app: k8s-monitor
     spec:
       serviceAccountName: k8s-monitor
+      volumes:
+        - name: sa-token
+          secret:
+            secretName: k8s-monitor-sa-token
       containers:
         - name: app
           image: vinnioliver66/k8s-monitor:v1.0.18
           imagePullPolicy: Always
+          volumeMounts:
+            - name: sa-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
           ports:
             - containerPort: 8000
           env:

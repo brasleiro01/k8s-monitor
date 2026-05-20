@@ -33,3 +33,14 @@ subjects:
   - kind: ServiceAccount
     name: k8s-monitor
     namespace: k8s-monitor
+
+---
+# Token estático (não expira) — evita o problema de 401 com tokens projetados no K3s
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k8s-monitor-sa-token
+  namespace: k8s-monitor
+  annotations:
+    kubernetes.io/service-account.name: k8s-monitor
+type: kubernetes.io/service-account-token
