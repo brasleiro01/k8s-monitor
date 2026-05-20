@@ -51,7 +51,7 @@ spec:
       serviceAccountName: k8s-monitor
       containers:
         - name: app
-          image: vinnioliver66/k8s-monitor:v1.0.18
+          image: vinnioliver66/k8s-monitor:v1.0.21
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
