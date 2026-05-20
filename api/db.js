@@ -1,36 +1,38 @@
 'use strict';
-/**
- * Camada Postgres — opcional.
- * Se DATABASE_URL não estiver configurado, todos os métodos retornam null/false
- * e o server.js usa os arquivos JSON como fallback.
- */
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DB_SSL = process.env.DB_SSL === '1';
 
 let pool = null;
 let schemaReady = false;
+let schemaPromise = null;
 
 function getPool() {
   if (!DATABASE_URL) return null;
   if (!pool) {
     const { Pool } = require('pg');
+    const masked = DATABASE_URL.replace(/:([^:@]+)@/, ':***@');
+    console.log(`[db] conectando ao banco: ${masked}`);
     pool = new Pool({
       connectionString: DATABASE_URL,
       ssl: DB_SSL ? { rejectUnauthorized: false } : false,
       max: 10,
       idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
     });
     pool.on('error', err => console.error('[db] pool error:', err.message));
-    ensureSchema().catch(e => console.error('[db] schema error:', e.message));
+    pool.on('connect', () => console.log('[db] nova conexão estabelecida'));
   }
   return pool;
 }
 
 async function ensureSchema() {
   if (schemaReady) return;
+  if (schemaPromise) return schemaPromise;
+
   const p = getPool();
   if (!p) return;
-  await p.query(`
+
+  schemaPromise = p.query(`
     CREATE TABLE IF NOT EXISTS incidents (
       id                     VARCHAR(64)  PRIMARY KEY,
       pod                    VARCHAR(255) NOT NULL,
@@ -54,18 +56,27 @@ async function ensureSchema() {
       postmortem_file        VARCHAR(255),
       created_at             TIMESTAMPTZ  DEFAULT NOW()
     )
-  `);
-  schemaReady = true;
-  console.log('[db] schema ok');
+  `).then(() => {
+    schemaReady = true;
+    console.log('[db] schema ok — tabela incidents pronta');
+  }).catch(e => {
+    schemaPromise = null;
+    console.error('[db] falha ao criar schema:', e.message);
+    throw e;
+  });
+
+  return schemaPromise;
 }
 
 async function loadIncidents() {
   const p = getPool();
   if (!p) return null;
   try {
+    await ensureSchema();
     const { rows } = await p.query(
       'SELECT * FROM incidents ORDER BY last_seen DESC'
     );
+    console.log(`[db] loadIncidents: ${rows.length} incidente(s) carregado(s)`);
     return rows.map(r => ({
       id:                    r.id,
       pod:                   r.pod,
@@ -96,6 +107,7 @@ async function findIncidentById(id) {
   const p = getPool();
   if (!p) return null;
   try {
+    await ensureSchema();
     const { rows } = await p.query('SELECT * FROM incidents WHERE id = $1', [id]);
     return rows[0] || null;
   } catch (e) {
@@ -108,6 +120,7 @@ async function resolveIncident(id, resolvedAt, description, resolutionTime, post
   const p = getPool();
   if (!p) return false;
   try {
+    await ensureSchema();
     await p.query(`
       UPDATE incidents SET
         resolved               = true,
@@ -118,6 +131,7 @@ async function resolveIncident(id, resolvedAt, description, resolutionTime, post
         postmortem_content     = $6
       WHERE id = $1
     `, [id, resolvedAt, description, resolutionTime, postmortemFile, postmortemContent]);
+    console.log(`[db] incidente ${id.substring(0, 8)} resolvido`);
     return true;
   } catch (e) {
     console.error('[db] resolve error:', e.message);
@@ -129,6 +143,7 @@ async function reopenIncident(id) {
   const p = getPool();
   if (!p) return false;
   try {
+    await ensureSchema();
     await p.query(`
       UPDATE incidents SET
         resolved = false, resolved_at = NULL,
@@ -136,6 +151,7 @@ async function reopenIncident(id) {
         postmortem_file = NULL, postmortem_content = NULL
       WHERE id = $1
     `, [id]);
+    console.log(`[db] incidente ${id.substring(0, 8)} reaberto`);
     return true;
   } catch (e) {
     console.error('[db] reopen error:', e.message);
@@ -147,6 +163,7 @@ async function getPostmortemContent(id) {
   const p = getPool();
   if (!p) return null;
   try {
+    await ensureSchema();
     const { rows } = await p.query(
       'SELECT postmortem_content, postmortem_file FROM incidents WHERE id = $1',
       [id]
@@ -161,6 +178,7 @@ async function getPostmortemContent(id) {
 module.exports = {
   isConfigured: () => !!DATABASE_URL,
   getPool,
+  ensureSchema,
   loadIncidents,
   findIncidentById,
   resolveIncident,

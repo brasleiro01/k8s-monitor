@@ -21,6 +21,7 @@ _schema_created = False
 def _get_conn():
     global _conn, _schema_created
     if not DATABASE_URL:
+        logger.warning("DATABASE_URL não configurado — banco de dados desabilitado")
         return None
     with _lock:
         try:
@@ -28,12 +29,14 @@ def _get_conn():
             import psycopg2.extras  # noqa: F401 — necessário para execute_values
 
             if _conn is None or _conn.closed:
+                masked = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL
+                logger.info("Conectando ao Postgres: ...@%s", masked)
                 kwargs = {"dsn": DATABASE_URL}
                 if DB_SSL:
                     kwargs["sslmode"] = "require"
                 _conn = psycopg2.connect(**kwargs)
                 _conn.autocommit = True
-                logger.info("Conectado ao banco de dados Postgres")
+                logger.info("Conexão com Postgres estabelecida com sucesso")
 
             if not _schema_created:
                 _create_schema(_conn)
@@ -41,7 +44,7 @@ def _get_conn():
 
             return _conn
         except Exception as exc:
-            logger.error("Falha ao conectar ao banco: %s", exc)
+            logger.error("Falha ao conectar ao banco de dados: %s", exc)
             _conn = None
             return None
 

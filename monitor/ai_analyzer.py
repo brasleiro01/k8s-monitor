@@ -2,7 +2,8 @@ import json
 import logging
 from typing import Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 import rule_analyzer
 from config import GEMINI_API_KEY, GEMINI_MODEL
@@ -38,29 +39,30 @@ Responda sempre em Português do Brasil."""
 
 class AIAnalyzer:
     def __init__(self):
-        genai.configure(api_key=GEMINI_API_KEY)
-        self._model = genai.GenerativeModel(
-            model_name=GEMINI_MODEL,
+        logger.info("Inicializando AIAnalyzer com modelo: %s", GEMINI_MODEL)
+        self._client = genai.Client(api_key=GEMINI_API_KEY)
+        self._config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                temperature=0.1,
-            ),
+            response_mime_type="application/json",
+            temperature=0.1,
         )
 
     def analyze(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
+        logger.info("Iniciando análise de erro — pod=%s/%s", namespace, pod_name)
+
         # 1. Tenta análise com Gemini
         result = self._call_gemini(pod_name, namespace, error_info)
         if result:
             return result
 
         # 2. Fallback: análise baseada em regras (contextual, não genérica)
-        logger.warning("Usando análise por regras para %s/%s", namespace, pod_name)
+        logger.warning("Gemini indisponível — usando análise por regras para %s/%s", namespace, pod_name)
         result = rule_analyzer.analyze(pod_name, namespace, error_info)
         if result:
             return result
 
         # 3. Último recurso: genérico mínimo
+        logger.error("Análise por regras também falhou para %s/%s — usando resposta de último recurso", namespace, pod_name)
         return self._last_resort(error_info)
 
     def _call_gemini(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
@@ -71,11 +73,16 @@ class AIAnalyzer:
             f"Linha de erro: {error_info['error_line']}\n"
             f"Contexto do log (linhas anteriores ao erro):\n{context_text}"
         )
+        logger.debug("Enviando requisição ao Gemini (%s) — tamanho da mensagem: %d chars", GEMINI_MODEL, len(user_message))
         try:
-            response = self._model.generate_content(user_message)
+            response = self._client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=user_message,
+                config=self._config,
+            )
             result = json.loads(response.text)
             logger.info(
-                "Gemini analisou %s/%s — severidade: %s",
+                "Gemini analisou %s/%s — severidade: %s | fonte: gemini",
                 namespace, pod_name, result.get("severity")
             )
             result["_source"] = "gemini"

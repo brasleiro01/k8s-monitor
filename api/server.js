@@ -13,6 +13,9 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (!req.path.startsWith('/api/events')) {
+    console.log(`[api] ${req.method} ${req.path}`);
+  }
   next();
 });
 
@@ -190,9 +193,15 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders();
   res.write('event: connected\ndata: {}\n\n');
 
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 30000);
   sseClients.add(res);
-  req.on('close', () => { clearInterval(heartbeat); sseClients.delete(res); });
+  console.log(`[sse] cliente conectado — total: ${sseClients.size}`);
+
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 30000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.delete(res);
+    console.log(`[sse] cliente desconectado — total: ${sseClients.size}`);
+  });
 });
 
 if (process.env.NODE_ENV === 'production') {
@@ -206,23 +215,39 @@ if (process.env.NODE_ENV === 'production') {
 const knownIds = new Set();
 
 async function initPolling() {
-  const rows = await db.loadIncidents();
-  if (rows) rows.forEach(r => knownIds.add(r.id));
+  console.log('[polling] aguardando schema do banco antes de iniciar polling...');
+  await db.ensureSchema();
 
+  const rows = await db.loadIncidents();
+  if (rows) {
+    rows.forEach(r => knownIds.add(r.id));
+    console.log(`[polling] estado inicial: ${rows.length} incidente(s) existente(s)`);
+  } else {
+    console.warn('[polling] banco indisponível — polling SSE desabilitado');
+    return;
+  }
+
+  console.log('[polling] iniciando poll a cada 5s...');
   setInterval(async () => {
     if (sseClients.size === 0) return;
     const rows = await db.loadIncidents();
     if (!rows) return;
+    let novos = 0;
     for (const incident of rows) {
       if (!knownIds.has(incident.id)) {
         knownIds.add(incident.id);
         broadcast('incident', { ...incident, resolved: false });
+        novos++;
       }
+    }
+    if (novos > 0) {
+      console.log(`[polling] ${novos} novo(s) incidente(s) transmitido(s) via SSE`);
     }
   }, 5000);
 }
 
 app.listen(PORT, () => {
-  console.log(`k8s-monitor API rodando na porta ${PORT}`);
+  console.log(`[api] k8s-monitor API iniciada na porta ${PORT} (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
+  console.log(`[api] DATABASE_URL configurado: ${db.isConfigured() ? 'sim' : 'NÃO — banco desabilitado'}`);
   initPolling().catch(e => console.error('[polling] init error:', e.message));
 });
