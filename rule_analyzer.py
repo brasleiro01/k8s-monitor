@@ -6,10 +6,48 @@ logger = logging.getLogger(__name__)
 # Cada regra: pattern de match, extractor opcional, e função que monta a análise
 _RULES = [
     # ------------------------------------------------------------------ #
-    # Arquivo / diretório não encontrado                                  #
+    # Coletor Prometheus desabilitado (baixo impacto — feature disabled) #
     # ------------------------------------------------------------------ #
     {
-        "match": re.compile(r"no such file or directory|not found|does not exist", re.I),
+        "match": re.compile(
+            r"disabling\s+\w+\s+(?:device\s+)?properties|"
+            r"failed to open directory.*disabling|"
+            r"disabling\s+collector|"
+            r"collector=\S+\s+msg=\"Failed to open",
+            re.I
+        ),
+        "extract": re.compile(r"path=([/\w\-\.]+)", re.I),
+        "severity": "low",
+        "build": lambda path, pod, ns: {
+            "root_cause": (
+                f"node_exporter não consegue acessar '{path or '/run/udev/data'}' dentro do contêiner — "
+                "o coletor foi desabilitado automaticamente por falta de permissão de acesso ao socket do host"
+            ),
+            "severity": "low",
+            "immediate_action": [
+                f"Suprimir o coletor via arg: adicionar --no-collector.udev no deployment do node_exporter em {ns}",
+                f"OU montar o socket do host: adicionar hostPath volume '/run/udev' no pod {pod}",
+                f"Verificar quais coletores estão ativos: kubectl logs {pod} -n {ns} | grep 'collector='",
+            ],
+            "prevention": [
+                "Usar --collector.disable-defaults e habilitar explicitamente apenas os coletores necessários",
+                f"Adicionar toleração no deployment para garantir que o node_exporter rode no nó correto com acesso ao host",
+            ],
+            "estimated_impact": (
+                f"Apenas métricas relacionadas a udev/disco indisponíveis — "
+                "monitoramento principal do node_exporter não afetado"
+            ),
+            "summary": (
+                f"node_exporter desabilitou coletor por falta de acesso a '{path or '/run/udev/data'}' — "
+                "baixo impacto; suprimir o coletor ou montar o hostPath"
+            ),
+        },
+    },
+    # ------------------------------------------------------------------ #
+    # Arquivo / diretório não encontrado (inclui "failed to open")       #
+    # ------------------------------------------------------------------ #
+    {
+        "match": re.compile(r"no such file or directory|not found|does not exist|failed to open|cannot open|unable to open", re.I),
         "extract": re.compile(r'(?:stat|lstat|open|read|path=)["\s]+([/][\w/\-\.]+)', re.I),
         "severity": "high",
         "build": lambda path, pod, ns: {
@@ -167,6 +205,85 @@ _RULES = [
             ],
             "estimated_impact": "Requisições lentas ou com falha — experiência degradada para usuários",
             "summary": f"Timeout ao aguardar '{path or 'dependência'}' no pod {pod} — verificar saúde dos serviços dependentes",
+        },
+    },
+    # ------------------------------------------------------------------ #
+    # Panic / fatal crash                                                 #
+    # ------------------------------------------------------------------ #
+    {
+        "match": re.compile(r"\bpanic\b|fatal error:|runtime error:|goroutine.*panic", re.I),
+        "extract": re.compile(r"(?:panic:|error:)\s+(.{10,80})", re.I),
+        "severity": "critical",
+        "build": lambda path, pod, ns: {
+            "root_cause": f"Aplicação encerrou com panic/crash fatal: '{path or 'erro não identificado'}' — ponteiro nulo, índice fora dos limites ou condição inesperada",
+            "severity": "critical",
+            "immediate_action": [
+                f"Ver stack trace completo: kubectl logs {pod} -n {ns} --previous | tail -50",
+                f"Verificar se o pod está em CrashLoopBackOff: kubectl get pod {pod} -n {ns}",
+                f"Ver últimos eventos: kubectl describe pod {pod} -n {ns} | tail -20",
+            ],
+            "prevention": [
+                "Adicionar recover() nos goroutines críticos (Go) para capturar panics e logar antes de encerrar",
+                "Implementar testes de integração que cubram os casos limites que causam o panic",
+                "Configurar readinessProbe para remover o pod do balanceador durante reinicializações",
+            ],
+            "estimated_impact": "Pod reiniciando — downtime até o Kubernetes reiniciar o contêiner",
+            "summary": f"Panic fatal no pod {pod} — ver stack trace com --previous para identificar a linha exata",
+        },
+    },
+    # ------------------------------------------------------------------ #
+    # Certificado TLS / x509                                             #
+    # ------------------------------------------------------------------ #
+    {
+        "match": re.compile(r"x509|certificate.*expired|tls.*handshake|ssl.*error|certificate.*invalid|certificate signed by unknown", re.I),
+        "extract": re.compile(r"(?:host|server|peer|for)\s+([\w\.\-:]+)", re.I),
+        "severity": "high",
+        "build": lambda path, pod, ns: {
+            "root_cause": f"Falha de certificado TLS ao conectar em '{path or 'serviço'}' — certificado expirado, autoassinado sem CA confiável, ou hostname não confere",
+            "severity": "high",
+            "immediate_action": [
+                f"Verificar validade do certificado: kubectl exec -n {ns} {pod} -- openssl s_client -connect {path or 'HOST:443'} -showcerts 2>&1 | grep -E 'NotBefore|NotAfter'",
+                f"Checar se há secret de TLS configurado: kubectl get secret -n {ns} | grep tls",
+                f"Renovar o certificado ou atualizar o CA bundle no contêiner",
+            ],
+            "prevention": [
+                "Usar cert-manager para renovação automática de certificados no Kubernetes",
+                "Configurar alerta de monitoramento para certificados com menos de 30 dias de validade",
+                "Usar --insecure-skip-tls-verify APENAS em ambientes de dev, nunca em produção",
+            ],
+            "estimated_impact": "Comunicação segura bloqueada — funcionalidades que dependem de HTTPS indisponíveis",
+            "summary": f"Erro de certificado TLS ao conectar em '{path or 'serviço'}' no pod {pod} — verificar validade e CA bundle",
+        },
+    },
+    # ------------------------------------------------------------------ #
+    # Banco de dados (SQL / Postgres / MySQL / MongoDB / Redis)          #
+    # ------------------------------------------------------------------ #
+    {
+        "match": re.compile(
+            r"pq:|mysql:|mongo:|redis:|"
+            r"database.*error|db.*connection|"
+            r"too many connections|max.*connections|"
+            r"relation.*does not exist|table.*not found|"
+            r"FATAL.*database|ERROR.*syntax",
+            re.I
+        ),
+        "extract": re.compile(r"(?:database|db|host|dsn)[=:\s]+[\"']?([\w\.\-:@/]+)", re.I),
+        "severity": "high",
+        "build": lambda path, pod, ns: {
+            "root_cause": f"Erro de banco de dados no pod {pod} — conexão recusada, schema desatualizado ou limite de conexões atingido",
+            "severity": "high",
+            "immediate_action": [
+                f"Verificar se o banco está acessível: kubectl exec -n {ns} {pod} -- nc -zv {path.split('/')[0] if path else 'DB_HOST DB_PORT'}",
+                f"Checar secret com credenciais do banco: kubectl get secret -n {ns} | grep -i db",
+                f"Ver número atual de conexões abertas no banco e comparar com o pool configurado na aplicação",
+            ],
+            "prevention": [
+                "Configurar connection pool adequado (PgBouncer para Postgres, por exemplo)",
+                "Adicionar retry com backoff nas queries críticas",
+                "Usar migrations versionadas (Flyway/Liquibase) para manter o schema sincronizado",
+            ],
+            "estimated_impact": "Serviço incapaz de persistir ou ler dados — indisponibilidade total ou parcial para usuários",
+            "summary": f"Erro de banco de dados no pod {pod} — verificar conectividade, credenciais e estado do schema",
         },
     },
 ]

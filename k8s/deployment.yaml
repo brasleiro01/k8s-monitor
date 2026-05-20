@@ -48,7 +48,9 @@ spec:
             - name: GEMINI_MODEL
               value: "gemini-2.0-flash"
             - name: ERROR_COOLDOWN_SECONDS
-              value: "300"
+              value: "3600"
+            - name: MAX_DAILY_ALERTS
+              value: "5"
             - name: CONTEXT_LINES
               value: "10"
             - name: LOG_LEVEL

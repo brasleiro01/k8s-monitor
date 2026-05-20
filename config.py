@@ -8,6 +8,12 @@ CONTEXT_LINES = int(os.environ.get("CONTEXT_LINES", "10"))
 ERROR_COOLDOWN_SECONDS = int(os.environ.get("ERROR_COOLDOWN_SECONDS", "3600"))  # 1h entre alertas do mesmo erro
 MAX_DAILY_ALERTS = int(os.environ.get("MAX_DAILY_ALERTS", "5"))               # máx 5 alertas/dia por erro
 
+# Padrões que devem ser IGNORADOS mesmo que batam com ERROR_PATTERNS.
+# Separe múltiplos padrões com || no env var.
+# Exemplo: EXCLUDE_LOG_PATTERNS="disabling udev||health check"
+_raw_exclude = os.environ.get("EXCLUDE_LOG_PATTERNS", "")
+EXCLUDE_LOG_PATTERNS = [p.strip() for p in _raw_exclude.split("||") if p.strip()]
+
 ERROR_PATTERNS = [
     r"(?i)\bERROR\b",
     r"(?i)\bCRITICAL\b",

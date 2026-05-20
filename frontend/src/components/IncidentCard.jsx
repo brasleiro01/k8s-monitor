@@ -68,6 +68,11 @@ export default function IncidentCard({ incident, onStatusChange }) {
         <div className="card-header" onClick={() => setOpen(o => !o)}>
           <div className={`severity-bar ${sev}`} />
           <span className={`badge ${sev}`}>{SEV_LABEL[sev] || sev}</span>
+          {incident._occurrences > 1 && (
+            <span className="occurrence-badge" title={`${incident._occurrences} ocorrências do mesmo erro`}>
+              ×{incident._occurrences}
+            </span>
+          )}
 
           <div className="card-title">
             <div className="pod">

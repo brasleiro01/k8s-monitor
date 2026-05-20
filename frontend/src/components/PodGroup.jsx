@@ -9,13 +9,32 @@ function worstSeverity(incidents) {
   }, 'low');
 }
 
+function deduplicateByError(incidents) {
+  const map = new Map();
+  for (const i of incidents) {
+    const existing = map.get(i.id);
+    if (!existing) {
+      map.set(i.id, { ...i, _occurrences: 1 });
+    } else {
+      existing._occurrences += 1;
+      if (i.timestamp > existing.timestamp) {
+        map.set(i.id, { ...i, _occurrences: existing._occurrences });
+      }
+    }
+  }
+  return [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
+}
+
 export default function PodGroup({ pod, namespace, incidents, onStatusChange }) {
   const [expanded, setExpanded] = useState(true);
 
-  const openCount = incidents.filter(i => !i.resolved).length;
-  const sev = worstSeverity(incidents.filter(i => !i.resolved).length > 0
-    ? incidents.filter(i => !i.resolved)
-    : incidents
+  const deduped = deduplicateByError(incidents);
+  const openCount = deduped.filter(i => !i.resolved).length;
+  const totalOccurrences = incidents.length;
+  const sev = worstSeverity(
+    deduped.filter(i => !i.resolved).length > 0
+      ? deduped.filter(i => !i.resolved)
+      : deduped
   );
 
   return (
@@ -32,7 +51,12 @@ export default function PodGroup({ pod, namespace, incidents, onStatusChange }) 
           {openCount > 0 && (
             <span className="pod-count-open">{openCount} aberto{openCount !== 1 ? 's' : ''}</span>
           )}
-          <span className="pod-count-total">{incidents.length} erro{incidents.length !== 1 ? 's' : ''}</span>
+          <span className="pod-count-total">
+            {deduped.length} tipo{deduped.length !== 1 ? 's' : ''}
+            {totalOccurrences > deduped.length && (
+              <span className="pod-count-occurrences"> · {totalOccurrences} ocorrências</span>
+            )}
+          </span>
         </div>
 
         <span className={`chevron${expanded ? ' open' : ''}`}>▼</span>
@@ -40,7 +64,7 @@ export default function PodGroup({ pod, namespace, incidents, onStatusChange }) 
 
       {expanded && (
         <div className="pod-group-body">
-          {incidents.map(incident => (
+          {deduped.map(incident => (
             <IncidentCard
               key={incident.id}
               incident={incident}
