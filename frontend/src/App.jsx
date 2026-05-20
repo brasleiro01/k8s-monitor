@@ -3,6 +3,7 @@ import { fetchIncidents, subscribeToEvents } from './api.js';
 import StatsBar from './components/StatsBar.jsx';
 import Filters from './components/Filters.jsx';
 import PodGroup from './components/PodGroup.jsx';
+import PostmortemsDrawer from './components/PostmortemsDrawer.jsx';
 
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '' };
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -14,7 +15,6 @@ function groupByPod(incidents) {
     if (!map.has(key)) map.set(key, { pod: i.pod, namespace: i.namespace, incidents: [] });
     map.get(key).incidents.push(i);
   }
-  // Ordena grupos pelo pior incidente aberto mais recente
   return [...map.values()].sort((a, b) => {
     const worstOpen = g => g.incidents
       .filter(i => !i.resolved)
@@ -31,6 +31,7 @@ export default function App() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -56,7 +57,7 @@ export default function App() {
       update => {
         if (update.type === 'resolved') {
           setIncidents(prev => prev.map(i => i.id === update.id
-            ? { ...i, resolved: true, postmortem_file: update.postmortem_file }
+            ? { ...i, resolved: true, postmortem_file: update.postmortem_file, resolution_description: update.resolution_description, resolution_time: update.resolution_time }
             : i));
         } else if (update.type === 'reopened') {
           setIncidents(prev => prev.map(i => i.id === update.id
@@ -72,9 +73,9 @@ export default function App() {
     return () => { unsub(); clearInterval(heartbeat); };
   }, [load]);
 
-  function handleStatusChange(id, resolved, postmortem_file) {
+  function handleStatusChange(id, resolved, postmortem_file, extra = {}) {
     setIncidents(prev => prev.map(i =>
-      i.id === id ? { ...i, resolved, postmortem_file: postmortem_file ?? i.postmortem_file } : i
+      i.id === id ? { ...i, resolved, postmortem_file: postmortem_file ?? i.postmortem_file, ...extra } : i
     ));
   }
 
@@ -92,17 +93,37 @@ export default function App() {
 
   const groups = groupByPod(filtered);
   const hasCritical = incidents.some(i => i.severity === 'critical' && !i.resolved);
+  const postmortemCount = incidents.filter(i => i.resolved && i.postmortem_file).length;
 
   return (
     <div className="app">
       <header className="topbar">
         <div className={`dot${hasCritical ? ' error' : ''}`} />
-        <h1>K8s Monitor</h1>
+        <h1>MT-K8s-Monitor</h1>
+
+        <button
+          className={`btn-postmortems${drawerOpen ? ' active' : ''}`}
+          onClick={() => setDrawerOpen(o => !o)}
+          title="Histórico de resoluções"
+        >
+          📋 Resoluções
+          {postmortemCount > 0 && (
+            <span className="pm-count-badge">{postmortemCount}</span>
+          )}
+        </button>
+
         <div className="live-badge">
           <span className={connected ? '' : 'off'} />
           {connected ? 'Ao vivo' : 'Conectando...'}
         </div>
       </header>
+
+      {drawerOpen && (
+        <PostmortemsDrawer
+          incidents={incidents}
+          onClose={() => setDrawerOpen(false)}
+        />
+      )}
 
       <main>
         {error && (

@@ -6,8 +6,12 @@ export async function fetchIncidents() {
   return res.json();
 }
 
-export async function resolveIncident(id) {
-  const res = await fetch(`${BASE}/incidents/${id}/resolve`, { method: 'PATCH' });
+export async function resolveIncident(id, resolution) {
+  const res = await fetch(`${BASE}/incidents/${id}/resolve`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(resolution),
+  });
   if (!res.ok) throw new Error('Falha ao resolver incidente');
   return res.json();
 }

@@ -53,6 +53,8 @@ function loadIncidents() {
           resolved: !!res,
           resolvedAt: res ? res.resolvedAt : null,
           postmortem_file: res ? res.postmortem_file : null,
+          resolution_description: res ? (res.description || '') : null,
+          resolution_time: res ? (res.resolution_time || '') : null,
         };
       } catch (_) { return null; }
     })
@@ -76,7 +78,7 @@ function findIncidentById(id) {
 // Postmortem generator (Markdown gerado na resolução)                //
 // ------------------------------------------------------------------ //
 
-function generatePostmortemMarkdown(incident, resolvedAt) {
+function generatePostmortemMarkdown(incident, resolvedAt, resolution = {}) {
   const fmt = ts => new Date(ts * 1000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
   const fmtIso = iso => iso.replace('T', ' ').substring(0, 19) + ' UTC';
   const detectedAt = fmt(incident.timestamp);
@@ -85,6 +87,8 @@ function generatePostmortemMarkdown(incident, resolvedAt) {
   const actions = (incident.immediate_action || []).map(a => `- [x] ${a}`).join('\n');
   const prevention = (incident.prevention || []).map(p => `- ${p}`).join('\n');
   const context = (incident.context || []).join('\n') || '(sem contexto capturado)';
+  const resolutionDesc = resolution.description || '_Não informado_';
+  const resolutionTime = resolution.resolution_time ? `**Tempo de resolução:** ${resolution.resolution_time}` : '';
 
   return `# Postmortem — ${incident.pod} — ${detectedAt}
 
@@ -126,7 +130,13 @@ ${incident.estimated_impact}
 
 ${incident.summary}
 
-## Ações Imediatas Realizadas
+## ✅ Solução Aplicada
+
+${resolutionDesc}
+
+${resolutionTime}
+
+## Ações Imediatas Sugeridas pela IA
 
 ${actions || '- [x] Investigação manual realizada'}
 
@@ -151,13 +161,13 @@ ${prevention || '- Revisar tratamento de erros da aplicação'}
 `;
 }
 
-function savePostmortem(incident, resolvedAt) {
+function savePostmortem(incident, resolvedAt, resolution = {}) {
   const date = new Date(resolvedAt);
   const ts = date.toISOString().replace(/[-:T]/g, '').substring(0, 15);
   const hash = incident.id.substring(0, 8);
   const filename = `postmortem_${ts}_${hash}.md`;
   const filepath = path.join(INCIDENTS_DIR, filename);
-  fs.writeFileSync(filepath, generatePostmortemMarkdown(incident, resolvedAt), 'utf-8');
+  fs.writeFileSync(filepath, generatePostmortemMarkdown(incident, resolvedAt, resolution), 'utf-8');
   console.log(`Postmortem gerado: ${filepath}`);
   return filename;
 }
@@ -181,17 +191,25 @@ app.get('/api/incidents', (req, res) => res.json(loadIncidents()));
 
 app.patch('/api/incidents/:id/resolve', (req, res) => {
   const { id } = req.params;
+  const { description = '', resolution_time = '' } = req.body || {};
+
   const incident = findIncidentById(id);
   if (!incident) return res.status(404).json({ error: 'Incidente não encontrado' });
 
   const resolvedAt = new Date().toISOString();
-  const postmortemFile = savePostmortem(incident, resolvedAt);
+  const resolution = { description, resolution_time };
+  const postmortemFile = savePostmortem(incident, resolvedAt, resolution);
 
   const resolved = loadResolved();
-  resolved[id] = { resolvedAt, postmortem_file: postmortemFile };
+  resolved[id] = { resolvedAt, postmortem_file: postmortemFile, ...resolution };
   saveResolved(resolved);
 
-  broadcast('update', { type: 'resolved', id, resolvedAt, postmortem_file: postmortemFile });
+  broadcast('update', {
+    type: 'resolved', id, resolvedAt,
+    postmortem_file: postmortemFile,
+    resolution_description: description,
+    resolution_time,
+  });
   res.json({ ok: true, postmortem_file: postmortemFile });
 });
 
