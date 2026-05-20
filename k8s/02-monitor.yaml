@@ -50,8 +50,13 @@ spec:
     spec:
       serviceAccountName: k8s-monitor
       containers:
+<<<<<<< HEAD:k8s/02-monitor.yaml
         - name: app
           image: vinnioliver66/k8s-monitor:latest
+=======
+        - name: monitor
+          image: vinnioliver66/k8s-monitor:v1.0.18
+>>>>>>> 85008eaa106518723381e1c502dc7a10af9b2d43:k8s/02-api.yaml
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

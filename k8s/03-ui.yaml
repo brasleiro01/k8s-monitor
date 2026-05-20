@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-monitor-ui
+  namespace: k8s-monitor
+spec:
+  selector:
+    app: k8s-monitor-ui
+  ports:
+    - port: 80
+      targetPort: 3001
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-monitor-ui
+  namespace: k8s-monitor
+spec:
+  rules:
+    - host: k8s-monitor.mvps.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: k8s-monitor-ui
+                port:
+                  number: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-monitor-ui
+  namespace: k8s-monitor
+  labels:
+    app: k8s-monitor-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-monitor-ui
+  template:
+    metadata:
+      labels:
+        app: k8s-monitor-ui
+    spec:
+      containers:
+        - name: ui
+          image: vinnioliver66/k8s-monitor-ui:v1.0.18
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+          env:
+            - name: PORT
+              value: "3001"
+            - name: NODE_ENV
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-monitor-secrets
+                  key: DATABASE_URL
+            - name: DB_SSL
+              value: "0"
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-monitor-secrets
+                  key: google-client-id
+                  optional: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
