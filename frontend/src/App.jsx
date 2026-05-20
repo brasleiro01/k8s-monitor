@@ -98,7 +98,7 @@ function K8sLogo({ size = 28 }) {
   );
 }
 
-export default function App() {
+export default function App({ googleClientId = '' }) {
   // ---- auth / tema ---- //
   const [user, setUser] = useState(loadUser);
   const [theme, setTheme] = useState(() => {
@@ -182,7 +182,7 @@ export default function App() {
   }
 
   // ---- render: login ---- //
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} googleClientId={googleClientId} />;
 
   // ---- filtros ---- //
   const filtered = incidents.filter(i => {
