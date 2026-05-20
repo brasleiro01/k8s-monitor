@@ -1,32 +1,26 @@
-import json
-import os
 import logging
 from datetime import datetime, timezone
 
 import db as database
-from config import POSTMORTEM_DIR
 
 logger = logging.getLogger(__name__)
 
 
 class PostmortemGenerator:
     def __init__(self):
-        os.makedirs(POSTMORTEM_DIR, exist_ok=True)
-        if database.is_configured():
-            logger.info("Postgres configurado — incidentes serão salvos no banco E em arquivos JSON")
-        else:
-            logger.info("Postgres não configurado — usando apenas arquivos JSON")
+        if not database.is_configured():
+            raise RuntimeError(
+                "DATABASE_URL não configurado. "
+                "O banco de dados é obrigatório nesta versão da aplicação."
+            )
+        logger.info("PostmortemGenerator inicializado — persistência via Postgres")
 
     def save_incident_json(self, pod_name: str, namespace: str, error_info: dict, analysis: dict) -> str:
-        error_hash = error_info.get("error_hash", "unknown")[:8]
+        error_hash = error_info.get("error_hash", "unknown")
         now = datetime.now(timezone.utc)
-        timestamp_str = now.strftime("%Y%m%d_%H%M%S")
-
-        json_filename = f"incident_{timestamp_str}_{error_hash}.json"
-        json_filepath = os.path.join(POSTMORTEM_DIR, json_filename)
 
         incident = {
-            "id": error_info.get("error_hash", f"{timestamp_str}_{error_hash}"),
+            "id": error_hash,
             "pod": pod_name,
             "namespace": namespace,
             "severity": analysis.get("severity", "high"),
@@ -40,12 +34,6 @@ class PostmortemGenerator:
             "summary": analysis.get("summary", ""),
         }
 
-        # Salva no banco (se configurado)
         database.upsert_incident(incident)
-
-        # Salva em arquivo JSON (sempre — funciona como backup e para o watcher SSE)
-        with open(json_filepath, "w", encoding="utf-8") as f:
-            json.dump(incident, f, ensure_ascii=False, indent=2)
-
-        logger.info("Incidente salvo: %s", json_filepath)
-        return json_filepath
+        logger.info("Incidente salvo no banco: %s (pod=%s)", error_hash[:8], pod_name)
+        return error_hash

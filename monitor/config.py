@@ -34,6 +34,4 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
-POSTMORTEM_DIR = os.environ.get("POSTMORTEM_DIR", "./postmortems")
-
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
