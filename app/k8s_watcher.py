@@ -1,14 +1,20 @@
+import base64
+import json as _json
 import logging
 import os
 import threading
 import time
 from typing import Callable
 
+import requests as _req
 from kubernetes import client, config, watch
 
 from config import EXCLUDE_NAMESPACES
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
 
 def load_k8s_config():
@@ -19,30 +25,63 @@ def load_k8s_config():
         config.load_kube_config()
         logger.info("Using local kubeconfig")
 
-    _log_k8s_diagnostics()
+    _diagnose()
 
 
-def _log_k8s_diagnostics():
-    """Loga informações de diagnóstico da conexão K8s ao iniciar."""
-    host = os.environ.get("KUBERNETES_SERVICE_HOST", "não definido")
-    port = os.environ.get("KUBERNETES_SERVICE_PORT", "não definido")
-    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-    ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+def _diagnose():
+    host = os.environ.get("KUBERNETES_SERVICE_HOST", "")
+    port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
 
     logger.info("[k8s] API server: %s:%s", host, port)
-    logger.info("[k8s] token: %s (%d bytes)",
-                "existe" if os.path.exists(token_path) else "NÃO ENCONTRADO",
-                os.path.getsize(token_path) if os.path.exists(token_path) else 0)
-    logger.info("[k8s] CA cert: %s",
-                "existe" if os.path.exists(ca_path) else "NÃO ENCONTRADO")
+    logger.info("[k8s] CA cert: %s", "existe" if os.path.exists(_CA_PATH) else "NÃO ENCONTRADO")
 
-    # Teste imediato de conectividade
+    if not os.path.exists(_TOKEN_PATH):
+        logger.error("[k8s] token NÃO ENCONTRADO em %s", _TOKEN_PATH)
+        return
+
+    token = open(_TOKEN_PATH).read().strip()
+    logger.info("[k8s] token: %d bytes", len(token))
+
+    # Decodifica payload JWT para mostrar issuer/subject/expiry
     try:
-        v1 = client.CoreV1Api()
-        v1.list_namespace(_request_timeout=5)
-        logger.info("[k8s] teste de conectividade: OK")
+        parts = token.split(".")
+        if len(parts) == 3:
+            pad = lambda s: s + "=" * (4 - len(s) % 4)
+            payload = _json.loads(base64.urlsafe_b64decode(pad(parts[1])))
+            logger.info("[k8s] JWT iss=%s  sub=%s", payload.get("iss"), payload.get("sub"))
+            exp = payload.get("exp")
+            if exp:
+                import datetime
+                logger.info("[k8s] JWT expira: %s UTC", datetime.datetime.utcfromtimestamp(exp))
+            else:
+                logger.info("[k8s] JWT sem expiração (token estático)")
+        else:
+            logger.warning("[k8s] conteúdo do token não é um JWT (partes=%d)", len(parts))
     except Exception as e:
-        logger.error("[k8s] teste de conectividade FALHOU: %s", e)
+        logger.warning("[k8s] falha ao decodificar JWT: %s", e)
+
+    if not host:
+        return
+
+    # Teste HTTP direto (bypassa kubernetes Python client completamente)
+    try:
+        verify = _CA_PATH if os.path.exists(_CA_PATH) else False
+        resp = _req.get(
+            f"https://{host}:{port}/api/v1/namespaces",
+            headers={"Authorization": f"Bearer {token}"},
+            verify=verify,
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            logger.info("[k8s] HTTP direto: 200 OK — token válido! problema está no kubernetes Python client")
+        elif resp.status_code == 401:
+            logger.error("[k8s] HTTP direto: 401 — token REJEITADO pelo cluster. Verifique o issuer do K3s (ver instruções abaixo)")
+        elif resp.status_code == 403:
+            logger.warning("[k8s] HTTP direto: 403 — token OK mas sem permissão. Verifique o ClusterRoleBinding")
+        else:
+            logger.warning("[k8s] HTTP direto: %d %s", resp.status_code, resp.text[:200])
+    except Exception as e:
+        logger.error("[k8s] HTTP direto FALHOU: %s", e)
 
 
 class K8sLogWatcher:
@@ -76,7 +115,6 @@ class K8sLogWatcher:
 
         while self._running:
             try:
-                # Recria o cliente a cada tentativa para recarregar o token do disco
                 v1 = client.CoreV1Api()
                 w = watch.Watch()
                 stream = w.stream(
@@ -129,7 +167,6 @@ class K8sLogWatcher:
     def _stream_pod_logs(self, pod_name: str, namespace: str, pod_key: str, stop_event: threading.Event):
         while not stop_event.is_set():
             try:
-                # Recria o cliente a cada tentativa para recarregar o token do disco
                 v1 = client.CoreV1Api()
                 w = watch.Watch()
                 stream = w.stream(
