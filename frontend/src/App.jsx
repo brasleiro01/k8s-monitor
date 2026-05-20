@@ -2,9 +2,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchIncidents, subscribeToEvents } from './api.js';
 import StatsBar from './components/StatsBar.jsx';
 import Filters from './components/Filters.jsx';
-import IncidentCard from './components/IncidentCard.jsx';
+import PodGroup from './components/PodGroup.jsx';
 
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '' };
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function groupByPod(incidents) {
+  const map = new Map();
+  for (const i of incidents) {
+    const key = `${i.namespace}/${i.pod}`;
+    if (!map.has(key)) map.set(key, { pod: i.pod, namespace: i.namespace, incidents: [] });
+    map.get(key).incidents.push(i);
+  }
+  // Ordena grupos pelo pior incidente aberto mais recente
+  return [...map.values()].sort((a, b) => {
+    const worstOpen = g => g.incidents
+      .filter(i => !i.resolved)
+      .reduce((w, i) => Math.min(w, SEV_ORDER[i.severity] ?? 4), 4);
+    const sevDiff = worstOpen(a) - worstOpen(b);
+    if (sevDiff !== 0) return sevDiff;
+    const latestTs = g => Math.max(...g.incidents.map(i => i.timestamp));
+    return latestTs(b) - latestTs(a);
+  });
+}
 
 export default function App() {
   const [incidents, setIncidents] = useState([]);
@@ -18,7 +38,7 @@ export default function App() {
       setIncidents(data);
       setError(null);
     } catch (e) {
-      setError('Cannot reach API — is the server running?');
+      setError('Não foi possível conectar à API — o servidor está rodando?');
     }
   }, []);
 
@@ -28,7 +48,10 @@ export default function App() {
     const unsub = subscribeToEvents(
       newIncident => {
         setConnected(true);
-        setIncidents(prev => [{ ...newIncident, resolved: false }, ...prev]);
+        setIncidents(prev => {
+          if (prev.some(i => i.id === newIncident.id)) return prev;
+          return [{ ...newIncident, resolved: false }, ...prev];
+        });
       },
       update => {
         if (update.type === 'resolved') {
@@ -36,7 +59,9 @@ export default function App() {
             ? { ...i, resolved: true, postmortem_file: update.postmortem_file }
             : i));
         } else if (update.type === 'reopened') {
-          setIncidents(prev => prev.map(i => i.id === update.id ? { ...i, resolved: false, postmortem_file: null } : i));
+          setIncidents(prev => prev.map(i => i.id === update.id
+            ? { ...i, resolved: false, postmortem_file: null }
+            : i));
         }
       }
     );
@@ -44,14 +69,13 @@ export default function App() {
     const heartbeat = setInterval(load, 30000);
     setConnected(true);
 
-    return () => {
-      unsub();
-      clearInterval(heartbeat);
-    };
+    return () => { unsub(); clearInterval(heartbeat); };
   }, [load]);
 
   function handleStatusChange(id, resolved, postmortem_file) {
-    setIncidents(prev => prev.map(i => i.id === id ? { ...i, resolved, postmortem_file: postmortem_file ?? i.postmortem_file } : i));
+    setIncidents(prev => prev.map(i =>
+      i.id === id ? { ...i, resolved, postmortem_file: postmortem_file ?? i.postmortem_file } : i
+    ));
   }
 
   const filtered = incidents.filter(i => {
@@ -66,6 +90,7 @@ export default function App() {
     return true;
   });
 
+  const groups = groupByPod(filtered);
   const hasCritical = incidents.some(i => i.severity === 'critical' && !i.resolved);
 
   return (
@@ -75,7 +100,7 @@ export default function App() {
         <h1>K8s Monitor</h1>
         <div className="live-badge">
           <span className={connected ? '' : 'off'} />
-          {connected ? 'Live' : 'Connecting...'}
+          {connected ? 'Ao vivo' : 'Conectando...'}
         </div>
       </header>
 
@@ -86,23 +111,23 @@ export default function App() {
           </div>
         )}
 
-
         <StatsBar incidents={incidents} />
-
         <Filters incidents={incidents} filters={filters} onChange={setFilters} />
 
         <div className="incident-list">
-          {filtered.length === 0 ? (
+          {groups.length === 0 ? (
             <div className="empty">
               {incidents.length === 0
                 ? 'Nenhum incidente ainda — o monitor está observando seus pods.'
                 : 'Nenhum incidente corresponde aos filtros selecionados.'}
             </div>
           ) : (
-            filtered.map(incident => (
-              <IncidentCard
-                key={incident.id}
-                incident={incident}
+            groups.map(g => (
+              <PodGroup
+                key={`${g.namespace}/${g.pod}`}
+                pod={g.pod}
+                namespace={g.namespace}
+                incidents={g.incidents}
                 onStatusChange={handleStatusChange}
               />
             ))
