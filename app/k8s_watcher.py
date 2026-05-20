@@ -18,14 +18,32 @@ _CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
 
 def load_k8s_config():
-    try:
-        config.load_incluster_config()
-        logger.info("Using in-cluster Kubernetes config")
-    except config.ConfigException:
-        config.load_kube_config()
-        logger.info("Using local kubeconfig")
+    host = os.environ.get("KUBERNETES_SERVICE_HOST", "")
+    port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+
+    if host and os.path.exists(_TOKEN_PATH):
+        _load_manual_incluster(host, port)
+    else:
+        try:
+            config.load_incluster_config()
+            logger.info("Using in-cluster Kubernetes config (auto)")
+        except config.ConfigException:
+            config.load_kube_config()
+            logger.info("Using local kubeconfig")
 
     _diagnose()
+
+
+def _load_manual_incluster(host: str, port: str):
+    token = open(_TOKEN_PATH).read().strip()
+    cfg = client.Configuration()
+    cfg.host = f"https://{host}:{port}"
+    cfg.verify_ssl = os.path.exists(_CA_PATH)
+    if cfg.verify_ssl:
+        cfg.ssl_ca_cert = _CA_PATH
+    cfg.api_key = {"authorization": f"Bearer {token}"}
+    client.Configuration.set_default(cfg)
+    logger.info("[k8s] manual in-cluster config: host=%s:%s token=%d bytes", host, port, len(token))
 
 
 def _diagnose():
