@@ -329,7 +329,62 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
 /* ---- Incident list ---- */
 .incident-list { display: flex; flex-direction: column; gap: 14px; }
 
-/* ---- Pod group ---- */
+/* ---- Namespace group (nível externo) ---- */
+.ns-group {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.15s;
+}
+.ns-group:hover { box-shadow: var(--shadow-md); }
+
+.ns-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+.ns-group-header:hover { background: var(--bg-hover); }
+
+.ns-group-icon {
+  font-size: 13px;
+  color: var(--primary);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.ns-group-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+
+.ns-group-counts {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.ns-resolved-note { color: var(--muted2); font-weight: 400; }
+
+.ns-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Pod group (pode ser standalone ou nested dentro de ns-group) ---- */
 .pod-group {
   background: var(--bg2);
   border: 1px solid var(--border);
@@ -340,21 +395,35 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
 }
 .pod-group:hover { box-shadow: var(--shadow-md); }
 
+/* Pod group nested dentro do namespace group */
+.pod-group--nested {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+.pod-group--nested:last-child { border-bottom: none; }
+.pod-group--nested:hover { box-shadow: none; }
+.ns-group-body .pod-group--nested .pod-group-header { padding-left: 32px; background: var(--bg2); }
+.ns-group-body .pod-group--nested .pod-group-header:hover { background: var(--bg3); }
+.ns-group-body .pod-group--nested .pod-group-body .card-header { padding-left: 48px; }
+
 .pod-group-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
   background: var(--bg3);
   border-bottom: 1px solid var(--border);
 }
-
 .pod-group-header:hover { background: var(--bg-hover); }
 
 .pod-group-info { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
-.pod-group-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.pod-group-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .pod-group-ns { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 .pod-group-counts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
@@ -1138,3 +1207,33 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
 }
 .login-submit:hover:not(:disabled) { opacity: 0.88; }
 .login-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 4px;
+}
+.btn-google:hover {
+  background: var(--bg3);
+  border-color: var(--muted);
+  box-shadow: var(--shadow);
+}
+
+.login-google-error {
+  font-size: 12px;
+  color: var(--critical);
+  text-align: center;
+  margin-top: 4px;
+}

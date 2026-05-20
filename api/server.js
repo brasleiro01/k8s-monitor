@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -187,19 +188,36 @@ function broadcast(event, data) {
 // Routes                                                              //
 // ------------------------------------------------------------------ //
 
-app.get('/api/incidents', (req, res) => res.json(loadIncidents()));
+app.get('/api/incidents', async (req, res) => {
+  if (db.isConfigured()) {
+    const rows = await db.loadIncidents();
+    if (rows !== null) return res.json(rows);
+    // fallback para arquivos se DB falhar
+  }
+  res.json(loadIncidents());
+});
 
-app.patch('/api/incidents/:id/resolve', (req, res) => {
+app.patch('/api/incidents/:id/resolve', async (req, res) => {
   const { id } = req.params;
   const { description = '', resolution_time = '' } = req.body || {};
 
-  const incident = findIncidentById(id);
+  // Busca o incidente (DB ou arquivo)
+  let incident = null;
+  if (db.isConfigured()) incident = await db.findIncidentById(id);
+  if (!incident) incident = findIncidentById(id);
   if (!incident) return res.status(404).json({ error: 'Incidente não encontrado' });
 
   const resolvedAt = new Date().toISOString();
   const resolution = { description, resolution_time };
   const postmortemFile = savePostmortem(incident, resolvedAt, resolution);
+  const postmortemContent = fs.existsSync(path.join(INCIDENTS_DIR, postmortemFile))
+    ? fs.readFileSync(path.join(INCIDENTS_DIR, postmortemFile), 'utf-8')
+    : '';
 
+  // Persiste resolução (DB e arquivo)
+  if (db.isConfigured()) {
+    await db.resolveIncident(id, resolvedAt, description, resolution_time, postmortemFile, postmortemContent);
+  }
   const resolved = loadResolved();
   resolved[id] = { resolvedAt, postmortem_file: postmortemFile, ...resolution };
   saveResolved(resolved);
@@ -213,8 +231,9 @@ app.patch('/api/incidents/:id/resolve', (req, res) => {
   res.json({ ok: true, postmortem_file: postmortemFile });
 });
 
-app.patch('/api/incidents/:id/reopen', (req, res) => {
+app.patch('/api/incidents/:id/reopen', async (req, res) => {
   const { id } = req.params;
+  if (db.isConfigured()) await db.reopenIncident(id);
   const resolved = loadResolved();
   delete resolved[id];
   saveResolved(resolved);
@@ -222,24 +241,35 @@ app.patch('/api/incidents/:id/reopen', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/incidents/:id/postmortem', (req, res) => {
+app.get('/api/incidents/:id/postmortem', async (req, res) => {
   const { id } = req.params;
   const view = req.query.view === '1';
-  const resolved = loadResolved();
-  const entry = resolved[id];
-  if (!entry || !entry.postmortem_file) return res.status(404).json({ error: 'Postmortem não gerado ainda' });
 
-  const filepath = path.join(INCIDENTS_DIR, entry.postmortem_file);
-  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
+  let content = null;
+  let filename = null;
 
-  const content = fs.readFileSync(filepath, 'utf-8');
-  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-
-  if (view) {
-    res.setHeader('Content-Disposition', `inline; filename="${entry.postmortem_file}"`);
-  } else {
-    res.setHeader('Content-Disposition', `attachment; filename="${entry.postmortem_file}"`);
+  // Tenta buscar do DB primeiro
+  if (db.isConfigured()) {
+    const row = await db.getPostmortemContent(id);
+    if (row && row.postmortem_content) {
+      content = row.postmortem_content;
+      filename = row.postmortem_file || `postmortem_${id.substring(0, 8)}.md`;
+    }
   }
+
+  // Fallback: lê do arquivo
+  if (!content) {
+    const resolved = loadResolved();
+    const entry = resolved[id];
+    if (!entry || !entry.postmortem_file) return res.status(404).json({ error: 'Postmortem não gerado ainda' });
+    const filepath = path.join(INCIDENTS_DIR, entry.postmortem_file);
+    if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    content = fs.readFileSync(filepath, 'utf-8');
+    filename = entry.postmortem_file;
+  }
+
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', `${view ? 'inline' : 'attachment'}; filename="${filename}"`);
   res.send(content);
 });
 

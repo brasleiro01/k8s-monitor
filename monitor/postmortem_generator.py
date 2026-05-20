@@ -3,6 +3,7 @@ import os
 import logging
 from datetime import datetime, timezone
 
+import db as database
 from config import POSTMORTEM_DIR
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,10 @@ logger = logging.getLogger(__name__)
 class PostmortemGenerator:
     def __init__(self):
         os.makedirs(POSTMORTEM_DIR, exist_ok=True)
+        if database.is_configured():
+            logger.info("Postgres configurado — incidentes serão salvos no banco E em arquivos JSON")
+        else:
+            logger.info("Postgres não configurado — usando apenas arquivos JSON")
 
     def save_incident_json(self, pod_name: str, namespace: str, error_info: dict, analysis: dict) -> str:
         error_hash = error_info.get("error_hash", "unknown")[:8]
@@ -35,6 +40,10 @@ class PostmortemGenerator:
             "summary": analysis.get("summary", ""),
         }
 
+        # Salva no banco (se configurado)
+        database.upsert_incident(incident)
+
+        # Salva em arquivo JSON (sempre — funciona como backup e para o watcher SSE)
         with open(json_filepath, "w", encoding="utf-8") as f:
             json.dump(incident, f, ensure_ascii=False, indent=2)
 

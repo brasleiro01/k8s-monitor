@@ -1,0 +1,139 @@
+# ============================================================
+# Postgres para K8s Monitor
+# Deploy interno no cluster — acesso apenas via ClusterIP
+# ============================================================
+
+# -- Secret com credenciais do banco -----------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-k8s-monitor-secret
+  namespace: k8s-monitor
+type: Opaque
+stringData:
+  POSTGRES_DB:       k8smonitor
+  POSTGRES_USER:     k8smonitor
+  POSTGRES_PASSWORD: TROQUE_ESTA_SENHA_AQUI
+  DATABASE_URL:      postgresql://k8smonitor:TROQUE_ESTA_SENHA_AQUI@postgres-k8s-monitor:5432/k8smonitor
+---
+# -- PVC para dados do Postgres ----------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-k8s-monitor-pvc
+  namespace: k8s-monitor
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# -- ConfigMap com script de inicialização -----------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-k8s-monitor-init
+  namespace: k8s-monitor
+data:
+  init.sql: |
+    -- Schema criado automaticamente pela aplicação no primeiro start.
+    -- Este script apenas garante extensões úteis e configurações extras.
+
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;   -- busca de texto por similaridade
+    CREATE EXTENSION IF NOT EXISTS btree_gin;  -- índices GIN em colunas escalares
+
+    -- Índices para consultas frequentes do dashboard
+    -- (a tabela incidents é criada pelo Python/Node.js na primeira conexão)
+    -- Executado novamente no restart é inofensivo (IF NOT EXISTS)
+---
+# -- Deployment do Postgres ---------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-k8s-monitor
+  namespace: k8s-monitor
+  labels:
+    app: postgres-k8s-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-k8s-monitor
+  strategy:
+    type: Recreate   # garante que o PVC não seja montado por dois pods ao mesmo tempo
+  template:
+    metadata:
+      labels:
+        app: postgres-k8s-monitor
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-k8s-monitor-secret
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-k8s-monitor-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-k8s-monitor-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "k8smonitor", "-d", "k8smonitor"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "k8smonitor", "-d", "k8smonitor"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-k8s-monitor-pvc
+        - name: postgres-init
+          configMap:
+            name: postgres-k8s-monitor-init
+---
+# -- Service (ClusterIP — interno ao cluster) --------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-k8s-monitor
+  namespace: k8s-monitor
+  labels:
+    app: postgres-k8s-monitor
+spec:
+  selector:
+    app: postgres-k8s-monitor
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

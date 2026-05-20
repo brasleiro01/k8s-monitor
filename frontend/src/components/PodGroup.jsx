@@ -25,7 +25,7 @@ function deduplicateByError(incidents) {
   return [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export default function PodGroup({ pod, namespace, incidents, onStatusChange }) {
+export default function PodGroup({ pod, namespace, incidents, onStatusChange, nested = false }) {
   const [expanded, setExpanded] = useState(true);
 
   const deduped = deduplicateByError(incidents);
@@ -38,13 +38,13 @@ export default function PodGroup({ pod, namespace, incidents, onStatusChange }) 
   );
 
   return (
-    <div className="pod-group">
+    <div className={`pod-group${nested ? ' pod-group--nested' : ''}`}>
       <div className="pod-group-header" onClick={() => setExpanded(e => !e)}>
         <div className={`severity-bar ${sev}`} />
 
         <div className="pod-group-info">
           <span className="pod-group-name">{pod}</span>
-          <span className="pod-group-ns">{namespace}</span>
+          {!nested && <span className="pod-group-ns">{namespace}</span>}
         </div>
 
         <div className="pod-group-counts">

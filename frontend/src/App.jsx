@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchIncidents, subscribeToEvents } from './api.js';
 import StatsBar from './components/StatsBar.jsx';
 import Filters from './components/Filters.jsx';
-import PodGroup from './components/PodGroup.jsx';
+import NamespaceGroup from './components/NamespaceGroup.jsx';
 import PostmortemsDrawer from './components/PostmortemsDrawer.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 
@@ -47,22 +47,37 @@ function avatarColor(name) {
 }
 
 // ---- agrupamento ---- //
-function groupByPod(incidents) {
-  const map = new Map();
+function groupByNamespace(incidents) {
+  const worstOpenSev = list => list
+    .filter(i => !i.resolved)
+    .reduce((w, i) => Math.min(w, SEV_ORDER[i.severity] ?? 4), 4);
+  const latestTs = list => Math.max(...list.map(i => i.timestamp));
+
+  // Agrupa por namespace → por pod
+  const nsMap = new Map();
   for (const i of incidents) {
-    const key = `${i.namespace}/${i.pod}`;
-    if (!map.has(key)) map.set(key, { pod: i.pod, namespace: i.namespace, incidents: [] });
-    map.get(key).incidents.push(i);
+    if (!nsMap.has(i.namespace)) nsMap.set(i.namespace, new Map());
+    const podMap = nsMap.get(i.namespace);
+    if (!podMap.has(i.pod)) podMap.set(i.pod, []);
+    podMap.get(i.pod).push(i);
   }
-  return [...map.values()].sort((a, b) => {
-    const worstOpen = g => g.incidents
-      .filter(i => !i.resolved)
-      .reduce((w, i) => Math.min(w, SEV_ORDER[i.severity] ?? 4), 4);
-    const sevDiff = worstOpen(a) - worstOpen(b);
-    if (sevDiff !== 0) return sevDiff;
-    const latestTs = g => Math.max(...g.incidents.map(i => i.timestamp));
-    return latestTs(b) - latestTs(a);
-  });
+
+  return [...nsMap.entries()]
+    .map(([namespace, podMap]) => {
+      const pods = [...podMap.entries()]
+        .map(([pod, podIncidents]) => ({ pod, incidents: podIncidents }))
+        .sort((a, b) => {
+          const sd = worstOpenSev(a.incidents) - worstOpenSev(b.incidents);
+          return sd !== 0 ? sd : latestTs(b.incidents) - latestTs(a.incidents);
+        });
+      return { namespace, pods };
+    })
+    .sort((a, b) => {
+      const allA = a.pods.flatMap(p => p.incidents);
+      const allB = b.pods.flatMap(p => p.incidents);
+      const sd = worstOpenSev(allA) - worstOpenSev(allB);
+      return sd !== 0 ? sd : latestTs(allB) - latestTs(allA);
+    });
 }
 
 // ---- componente de logo ---- //
@@ -190,7 +205,7 @@ export default function App() {
     return true;
   });
 
-  const groups = groupByPod(filtered);
+  const groups = groupByNamespace(filtered);
   const hasCritical = incidents.some(i => i.severity === 'critical' && !i.resolved);
   const postmortemCount = incidents.filter(i => i.resolved && i.postmortem_file).length;
 
@@ -272,11 +287,10 @@ export default function App() {
             </div>
           ) : (
             groups.map(g => (
-              <PodGroup
-                key={`${g.namespace}/${g.pod}`}
-                pod={g.pod}
+              <NamespaceGroup
+                key={g.namespace}
                 namespace={g.namespace}
-                incidents={g.incidents}
+                pods={g.pods}
                 onStatusChange={handleStatusChange}
               />
             ))
