@@ -31,7 +31,7 @@ spec:
       serviceAccountName: k8s-monitor
       containers:
         - name: monitor
-          image: vinnioliver66/k8s-monitor:latest
+          image: vinnioliver66/k8s-monitor:v1.0.13
           imagePullPolicy: Always
           env:
             - name: GEMINI_API_KEY
