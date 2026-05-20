@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postmortems-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-monitor
+  namespace: monitoring
+  labels:
+    app: k8s-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-monitor
+  template:
+    metadata:
+      labels:
+        app: k8s-monitor
+    spec:
+      serviceAccountName: k8s-monitor
+      containers:
+        - name: monitor
+          image: your-registry/k8s-monitor:latest
+          imagePullPolicy: Always
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-monitor-secrets
+                  key: anthropic-api-key
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-monitor-secrets
+                  key: discord-webhook-url
+            - name: NAMESPACES
+              value: ""  # empty = watch all namespaces
+            - name: CLAUDE_MODEL
+              value: "claude-sonnet-4-6"
+            - name: ERROR_COOLDOWN_SECONDS
+              value: "300"
+            - name: CONTEXT_LINES
+              value: "10"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: POSTMORTEM_DIR
+              value: "/postmortems"
+          volumeMounts:
+            - name: postmortems
+              mountPath: /postmortems
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: postmortems
+          persistentVolumeClaim:
+            claimName: postmortems-pvc
