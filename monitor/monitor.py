@@ -8,7 +8,6 @@ from config import (
     GEMINI_API_KEY,
     LOG_LEVEL,
     NAMESPACES,
-    POSTMORTEM_DIR,
 )
 from ai_analyzer import AIAnalyzer
 from discord_notifier import DiscordNotifier
@@ -37,9 +36,8 @@ class Monitor:
 
     def start(self):
         logger.info(
-            "Iniciando k8s log monitor | namespaces=%s | diretório=%s",
+            "Iniciando k8s log monitor | namespaces=%s",
             NAMESPACES or "todos",
-            POSTMORTEM_DIR,
         )
         self._watcher.start()
 
