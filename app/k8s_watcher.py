@@ -16,13 +16,22 @@ logger = logging.getLogger(__name__)
 _TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 _CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
+_k8s_host: str = ""
+_k8s_port: str = "443"
+_k8s_token: str = ""
+
 
 def load_k8s_config():
+    global _k8s_host, _k8s_port, _k8s_token
+
     host = os.environ.get("KUBERNETES_SERVICE_HOST", "")
     port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
 
     if host and os.path.exists(_TOKEN_PATH):
-        _load_manual_incluster(host, port)
+        _k8s_host = host
+        _k8s_port = port
+        _k8s_token = open(_TOKEN_PATH).read().strip()
+        logger.info("[k8s] credentials loaded: host=%s:%s token=%d bytes", host, port, len(_k8s_token))
     else:
         try:
             config.load_incluster_config()
@@ -34,16 +43,18 @@ def load_k8s_config():
     _diagnose()
 
 
-def _load_manual_incluster(host: str, port: str):
-    token = open(_TOKEN_PATH).read().strip()
-    cfg = client.Configuration()
-    cfg.host = f"https://{host}:{port}"
-    cfg.verify_ssl = os.path.exists(_CA_PATH)
-    if cfg.verify_ssl:
-        cfg.ssl_ca_cert = _CA_PATH
-    cfg.api_key = {"authorization": f"Bearer {token}"}
-    client.Configuration.set_default(cfg)
-    logger.info("[k8s] manual in-cluster config: host=%s:%s token=%d bytes", host, port, len(token))
+def _new_api_client() -> client.ApiClient:
+    """Cria ApiClient com Bearer token no default_headers, bypassando api_key."""
+    if _k8s_token and _k8s_host:
+        cfg = client.Configuration()
+        cfg.host = f"https://{_k8s_host}:{_k8s_port}"
+        cfg.verify_ssl = os.path.exists(_CA_PATH)
+        if cfg.verify_ssl:
+            cfg.ssl_ca_cert = _CA_PATH
+        api = client.ApiClient(configuration=cfg)
+        api.default_headers["Authorization"] = f"Bearer {_k8s_token}"
+        return api
+    return client.ApiClient()
 
 
 def _diagnose():
@@ -60,7 +71,6 @@ def _diagnose():
     token = open(_TOKEN_PATH).read().strip()
     logger.info("[k8s] token: %d bytes", len(token))
 
-    # Decodifica payload JWT para mostrar issuer/subject/expiry
     try:
         parts = token.split(".")
         if len(parts) == 3:
@@ -81,7 +91,6 @@ def _diagnose():
     if not host:
         return
 
-    # Teste HTTP direto (bypassa kubernetes Python client completamente)
     try:
         verify = _CA_PATH if os.path.exists(_CA_PATH) else False
         resp = _req.get(
@@ -91,11 +100,11 @@ def _diagnose():
             timeout=5,
         )
         if resp.status_code == 200:
-            logger.info("[k8s] HTTP direto: 200 OK — token válido! problema está no kubernetes Python client")
+            logger.info("[k8s] HTTP direto: 200 OK")
         elif resp.status_code == 401:
-            logger.error("[k8s] HTTP direto: 401 — token REJEITADO pelo cluster. Verifique o issuer do K3s (ver instruções abaixo)")
+            logger.error("[k8s] HTTP direto: 401 — token REJEITADO pelo cluster")
         elif resp.status_code == 403:
-            logger.warning("[k8s] HTTP direto: 403 — token OK mas sem permissão. Verifique o ClusterRoleBinding")
+            logger.info("[k8s] HTTP direto: 403 — token OK (sem permissão p/ namespaces, esperado)")
         else:
             logger.warning("[k8s] HTTP direto: %d %s", resp.status_code, resp.text[:200])
     except Exception as e:
@@ -133,7 +142,7 @@ class K8sLogWatcher:
 
         while self._running:
             try:
-                v1 = client.CoreV1Api()
+                v1 = client.CoreV1Api(api_client=_new_api_client())
                 w = watch.Watch()
                 stream = w.stream(
                     v1.list_namespaced_pod if namespace else v1.list_pod_for_all_namespaces,
@@ -185,7 +194,7 @@ class K8sLogWatcher:
     def _stream_pod_logs(self, pod_name: str, namespace: str, pod_key: str, stop_event: threading.Event):
         while not stop_event.is_set():
             try:
-                v1 = client.CoreV1Api()
+                v1 = client.CoreV1Api(api_client=_new_api_client())
                 w = watch.Watch()
                 stream = w.stream(
                     v1.read_namespaced_pod_log,
