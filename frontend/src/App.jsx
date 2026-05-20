@@ -32,9 +32,11 @@ export default function App() {
       },
       update => {
         if (update.type === 'resolved') {
-          setIncidents(prev => prev.map(i => i.id === update.id ? { ...i, resolved: true } : i));
+          setIncidents(prev => prev.map(i => i.id === update.id
+            ? { ...i, resolved: true, postmortem_file: update.postmortem_file }
+            : i));
         } else if (update.type === 'reopened') {
-          setIncidents(prev => prev.map(i => i.id === update.id ? { ...i, resolved: false } : i));
+          setIncidents(prev => prev.map(i => i.id === update.id ? { ...i, resolved: false, postmortem_file: null } : i));
         }
       }
     );
@@ -48,8 +50,8 @@ export default function App() {
     };
   }, [load]);
 
-  function handleStatusChange(id, resolved) {
-    setIncidents(prev => prev.map(i => i.id === id ? { ...i, resolved } : i));
+  function handleStatusChange(id, resolved, postmortem_file) {
+    setIncidents(prev => prev.map(i => i.id === id ? { ...i, resolved, postmortem_file: postmortem_file ?? i.postmortem_file } : i));
   }
 
   const filtered = incidents.filter(i => {
@@ -84,6 +86,7 @@ export default function App() {
           </div>
         )}
 
+
         <StatsBar incidents={incidents} />
 
         <Filters incidents={incidents} filters={filters} onChange={setFilters} />
@@ -92,8 +95,8 @@ export default function App() {
           {filtered.length === 0 ? (
             <div className="empty">
               {incidents.length === 0
-                ? 'No incidents yet — the monitor is watching your pods.'
-                : 'No incidents match the current filters.'}
+                ? 'Nenhum incidente ainda — o monitor está observando seus pods.'
+                : 'Nenhum incidente corresponde aos filtros selecionados.'}
             </div>
           ) : (
             filtered.map(incident => (

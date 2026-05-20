@@ -8,7 +8,7 @@ export async function fetchIncidents() {
 
 export async function resolveIncident(id) {
   const res = await fetch(`${BASE}/incidents/${id}/resolve`, { method: 'PATCH' });
-  if (!res.ok) throw new Error('Failed to resolve incident');
+  if (!res.ok) throw new Error('Falha ao resolver incidente');
   return res.json();
 }
 

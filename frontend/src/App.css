@@ -269,3 +269,5 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
 .btn-resolve:hover { background: rgba(63,185,80,0.2); }
 .btn-reopen { background: rgba(88,166,255,0.1); color: var(--blue); border-color: rgba(88,166,255,0.3); }
 .btn-reopen:hover { background: rgba(88,166,255,0.2); }
+.btn-postmortem { background: rgba(139,100,222,0.1); color: #a371f7; border-color: rgba(139,100,222,0.3); }
+.btn-postmortem:hover { background: rgba(139,100,222,0.2); }

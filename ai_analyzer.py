@@ -8,23 +8,25 @@ from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an expert SRE (Site Reliability Engineer) and DevOps specialist with deep knowledge of Kubernetes, distributed systems, and production incident response.
+SYSTEM_PROMPT = """Você é um especialista em SRE (Site Reliability Engineering) e DevOps com profundo conhecimento em Kubernetes, sistemas distribuídos e resposta a incidentes em produção.
 
-When given a Kubernetes pod error, analyze it and respond ONLY with a valid JSON object (no markdown, no extra text) with this exact structure:
+Ao receber um erro de pod Kubernetes, analise-o e responda APENAS com um objeto JSON válido (sem markdown, sem texto extra) com esta estrutura exata:
 {
-  "root_cause": "concise explanation of what caused the error",
+  "root_cause": "explicação concisa da causa raiz do erro",
   "severity": "critical|high|medium|low",
-  "immediate_action": ["step 1", "step 2", "step 3"],
-  "prevention": ["measure 1", "measure 2"],
-  "estimated_impact": "description of blast radius and affected users/services",
-  "summary": "one-sentence human-readable summary for notification"
+  "immediate_action": ["passo 1", "passo 2", "passo 3"],
+  "prevention": ["medida 1", "medida 2"],
+  "estimated_impact": "descrição do raio de impacto e usuários/serviços afetados",
+  "summary": "resumo em uma frase para notificação no Discord"
 }
 
-Severity guide:
-- critical: service down, data loss risk, security breach
-- high: partial outage, significant degradation
-- medium: degraded performance, non-critical component failure
-- low: warning, minor issue, no user impact"""
+Guia de severidade:
+- critical: serviço fora do ar, risco de perda de dados, brecha de segurança
+- high: indisponibilidade parcial, degradação significativa de performance
+- medium: degradação de performance, falha em componente não crítico
+- low: aviso, problema menor sem impacto ao usuário final
+
+Responda sempre em Português do Brasil."""
 
 
 class AIAnalyzer:
@@ -44,18 +46,18 @@ class AIAnalyzer:
         user_message = (
             f"Pod: {pod_name}\n"
             f"Namespace: {namespace}\n"
-            f"Error line: {error_info['error_line']}\n"
-            f"Log context (lines before error):\n{context_text}"
+            f"Linha de erro: {error_info['error_line']}\n"
+            f"Contexto do log (linhas anteriores ao erro):\n{context_text}"
         )
 
         try:
             response = self._model.generate_content(user_message)
             return json.loads(response.text)
         except json.JSONDecodeError:
-            logger.warning("Gemini returned non-JSON, attempting extraction")
+            logger.warning("Gemini retornou resposta não-JSON, tentando extração")
             return self._extract_json_fallback(response.text)
         except Exception as e:
-            logger.error("Gemini API error: %s", e)
+            logger.error("Erro na API Gemini: %s", e)
             return self._fallback_analysis(error_info)
 
     def _extract_json_fallback(self, text: str) -> Optional[dict]:
@@ -70,17 +72,17 @@ class AIAnalyzer:
 
     def _fallback_analysis(self, error_info: dict) -> dict:
         return {
-            "root_cause": "Unable to determine root cause automatically",
+            "root_cause": "Não foi possível determinar a causa raiz automaticamente",
             "severity": "high",
             "immediate_action": [
-                "Check pod logs manually",
-                "Inspect pod events with kubectl describe",
-                "Check resource limits",
+                "Verificar os logs do pod manualmente",
+                "Inspecionar os eventos com kubectl describe pod",
+                "Verificar os limites de recursos do pod",
             ],
             "prevention": [
-                "Review application error handling",
-                "Set up proper resource limits",
+                "Revisar o tratamento de erros da aplicação",
+                "Configurar limites de recursos adequados",
             ],
-            "estimated_impact": "Unknown — manual investigation required",
-            "summary": f"Error detected: {error_info.get('error_line', 'unknown error')[:100]}",
+            "estimated_impact": "Desconhecido — investigação manual necessária",
+            "summary": f"Erro detectado: {error_info.get('error_line', 'erro desconhecido')[:100]}",
         }

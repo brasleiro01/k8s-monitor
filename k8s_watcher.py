@@ -5,6 +5,8 @@ from typing import Callable
 
 from kubernetes import client, config, watch
 
+from config import EXCLUDE_NAMESPACES
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +68,7 @@ class K8sLogWatcher:
 
                     if event_type in ("ADDED", "MODIFIED"):
                         phase = pod.status.phase if pod.status else None
-                        if phase == "Running":
+                        if phase == "Running" and pod_ns not in EXCLUDE_NAMESPACES:
                             self._ensure_pod_watched(pod_name, pod_ns, pod_key)
                     elif event_type == "DELETED":
                         self._stop_pod_watcher(pod_key)

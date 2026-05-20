@@ -1,6 +1,7 @@
 import os
 
 NAMESPACES = [n.strip() for n in os.environ.get("NAMESPACES", "").split(",") if n.strip()]
+EXCLUDE_NAMESPACES = [n.strip() for n in os.environ.get("EXCLUDE_NAMESPACES", "k8s-monitor").split(",") if n.strip()]
 
 LOG_LINES_TAIL = int(os.environ.get("LOG_LINES_TAIL", "100"))
 CONTEXT_LINES = int(os.environ.get("CONTEXT_LINES", "10"))

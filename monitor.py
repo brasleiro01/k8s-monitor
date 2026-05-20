@@ -28,7 +28,7 @@ class Monitor:
         self._detector = ErrorDetector()
         self._analyzer = AIAnalyzer()
         self._notifier = DiscordNotifier()
-        self._postmortem = PostmortemGenerator()
+        self._incident_store = PostmortemGenerator()
         self._ai_lock = threading.Lock()
         self._watcher = K8sLogWatcher(
             namespaces=NAMESPACES,
@@ -37,14 +37,14 @@ class Monitor:
 
     def start(self):
         logger.info(
-            "Starting k8s log monitor | namespaces=%s | postmortem_dir=%s",
-            NAMESPACES or "all",
+            "Iniciando k8s log monitor | namespaces=%s | diretório=%s",
+            NAMESPACES or "todos",
             POSTMORTEM_DIR,
         )
         self._watcher.start()
 
     def stop(self):
-        logger.info("Stopping monitor...")
+        logger.info("Encerrando monitor...")
         self._watcher.stop()
 
     def _on_log_line(self, pod_name: str, namespace: str, pod_key: str, line: str):
@@ -52,7 +52,7 @@ class Monitor:
         if error_info is None:
             return
 
-        logger.warning("Error detected in %s: %s", pod_key, error_info["error_line"][:120])
+        logger.warning("Erro detectado em %s: %s", pod_key, error_info["error_line"][:120])
 
         t = threading.Thread(
             target=self._handle_error,
@@ -66,11 +66,14 @@ class Monitor:
             analysis = self._analyzer.analyze(pod_name, namespace, error_info)
 
         if analysis is None:
-            logger.error("AI analysis returned None for %s/%s", namespace, pod_name)
+            logger.error("Análise de IA retornou None para %s/%s", namespace, pod_name)
             return
 
-        postmortem_path = self._postmortem.generate(pod_name, namespace, error_info, analysis)
-        self._notifier.notify(pod_name, namespace, error_info, analysis, postmortem_path)
+        # Salva apenas o JSON do incidente — postmortem .md é gerado na resolução
+        self._incident_store.save_incident_json(pod_name, namespace, error_info, analysis)
+
+        # Notifica no Discord com erro + solução
+        self._notifier.notify(pod_name, namespace, error_info, analysis)
 
 
 def main():
@@ -80,7 +83,7 @@ def main():
     if not DISCORD_WEBHOOK_URL:
         missing.append("DISCORD_WEBHOOK_URL")
     if missing:
-        logger.error("Missing required environment variables: %s", ", ".join(missing))
+        logger.error("Variáveis de ambiente obrigatórias não encontradas: %s", ", ".join(missing))
         sys.exit(1)
 
     load_k8s_config()
@@ -91,7 +94,7 @@ def main():
     stop_event = threading.Event()
 
     def _shutdown(signum, frame):
-        logger.info("Received signal %d, shutting down...", signum)
+        logger.info("Sinal %d recebido, encerrando...", signum)
         monitor.stop()
         stop_event.set()
 
@@ -99,7 +102,7 @@ def main():
     signal.signal(signal.SIGINT, _shutdown)
 
     stop_event.wait()
-    logger.info("Monitor stopped.")
+    logger.info("Monitor encerrado.")
 
 
 if __name__ == "__main__":
