@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   IMAGE: vinnioliver66/k8s-monitor
@@ -65,7 +65,7 @@ jobs:
           cache-to: type=gha,scope=app,mode=max
 
   # ------------------------------------------------------------------ #
-  # Atualizar tag no manifesto K8s                                       #
+  # Atualizar tag no manifesto K8s (repo home-lab)                      #
   # ------------------------------------------------------------------ #
   update-manifests:
     name: Atualizar manifesto K8s
@@ -73,24 +73,28 @@ jobs:
     needs: [version, build]
     if: github.event_name != 'pull_request'
     steps:
-      - name: Checkout
+      - name: Checkout home-lab
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: brasleiro01/home-lab
+          token: ${{ secrets.HOMELAB_PAT }}
+          path: home-lab
 
-      - name: Atualizar imagem em k8s/02-monitor.yaml
+      - name: Atualizar imagem em argocd/k8s-monitor/02-monitor.yaml
         run: |
           TAG="${{ needs.version.outputs.tag }}"
-          sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${TAG}|" k8s/02-monitor.yaml
+          sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${TAG}|" \
+            home-lab/argocd/k8s-monitor/02-monitor.yaml
 
-      - name: Commit e push
+      - name: Commit e push para home-lab
         run: |
           TAG="${{ needs.version.outputs.tag }}"
+          cd home-lab
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/02-monitor.yaml
+          git add argocd/k8s-monitor/02-monitor.yaml
           git diff --staged --quiet && echo "Nenhuma alteração." || \
-            git commit -m "ci: atualiza imagem para ${TAG}" && git push
+            git commit -m "ci(k8s-monitor): atualiza imagem para ${TAG}" && git push
 
   # ------------------------------------------------------------------ #
   # Summary                                                              #
@@ -109,4 +113,4 @@ jobs:
           echo "|--------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| \`vinnioliver66/k8s-monitor\` | \`${{ needs.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Manifesto atualizado: \`k8s/02-monitor.yaml\`" >> $GITHUB_STEP_SUMMARY
+          echo "Manifesto atualizado: \`brasleiro01/home-lab — argocd/k8s-monitor/02-monitor.yaml\`" >> $GITHUB_STEP_SUMMARY
