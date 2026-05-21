@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-monitor
+  namespace: k8s-monitor
+spec:
+  rules:
+    - host: k8s-monitor.mvps.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: k8s-monitor
+                port:
+                  number: 80

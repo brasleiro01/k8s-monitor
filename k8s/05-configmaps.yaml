@@ -1,0 +1,14 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: k8s-monitor-config
+  namespace: k8s-monitor
+data:
+  EXCLUDE_NAMESPACES: "kube-system,kube-public,monitoring"
+  NAMESPACES: "demo"
+  GEMINI_MODEL: "gemini-2.0-flash"
+  ERROR_COOLDOWN_SECONDS: "3600"
+  MAX_DAILY_ALERTS: "5"
+  CONTEXT_LINES: "10"
+  LOG_LEVEL: "INFO"
+  DB_SSL: "0"
