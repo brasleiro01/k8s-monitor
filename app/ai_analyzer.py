@@ -40,6 +40,11 @@ Responda sempre em Português do Brasil."""
 class AIAnalyzer:
     def __init__(self):
         logger.info("Inicializando AIAnalyzer com modelo: %s", GEMINI_MODEL)
+        if not GEMINI_API_KEY:
+            logger.warning("GEMINI_API_KEY não configurada — análise de IA desabilitada, usando fallback de regras")
+            self._client = None
+            self._config = None
+            return
         self._client = genai.Client(api_key=GEMINI_API_KEY)
         self._config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
@@ -66,6 +71,8 @@ class AIAnalyzer:
         return self._last_resort(error_info)
 
     def _call_gemini(self, pod_name: str, namespace: str, error_info: dict) -> Optional[dict]:
+        if self._client is None:
+            return None
         context_text = "\n".join(error_info.get("context", []))
         user_message = (
             f"Pod: {pod_name}\n"

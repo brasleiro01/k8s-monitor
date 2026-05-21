@@ -297,6 +297,9 @@ def _build_prompt(namespace: str, pods: list) -> str:
 
 
 def _analyze_with_gemini(namespace: str, pods: list) -> dict:
+    if not GEMINI_API_KEY:
+        logger.warning("[checker] GEMINI_API_KEY ausente — usando análise básica")
+        return _basic_analysis(pods)
     try:
         prompt = _build_prompt(namespace, pods)
         g = genai.Client(api_key=GEMINI_API_KEY)
