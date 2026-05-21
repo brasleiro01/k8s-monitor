@@ -6,6 +6,7 @@ import logging
 from kubernetes import client as k8s_client
 from kubernetes.client import CustomObjectsApi
 
+from config import EXCLUDE_NAMESPACES, NAMESPACES
 from k8s_watcher import _new_api_client
 from namespace_checker import (
     _fmt_mem,
@@ -34,10 +35,20 @@ def fetch_cluster_overview() -> dict:
     v1 = k8s_client.CoreV1Api(api_client=api_client)
     custom = CustomObjectsApi(api_client=api_client)
 
-    # ── fetch all pods ──
+    # ── fetch pods respecting NAMESPACES / EXCLUDE_NAMESPACES ──
     try:
-        pod_list = v1.list_pod_for_all_namespaces(timeout_seconds=15)
-        pods_raw = pod_list.items
+        if NAMESPACES:
+            pods_raw = []
+            for ns in NAMESPACES:
+                result = v1.list_namespaced_pod(ns, timeout_seconds=15)
+                pods_raw.extend(result.items)
+        else:
+            pod_list = v1.list_pod_for_all_namespaces(timeout_seconds=15)
+            pods_raw = pod_list.items
+
+        if EXCLUDE_NAMESPACES:
+            pods_raw = [p for p in pods_raw
+                        if p.metadata.namespace not in EXCLUDE_NAMESPACES]
     except Exception as exc:
         logger.error("[overview] list pods failed: %s", exc)
         return {"namespaces": [], "metrics_available": False, "total_pods": 0,

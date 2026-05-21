@@ -133,6 +133,7 @@ export default function ClusterOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [nsFilter, setNsFilter] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +173,11 @@ export default function ClusterOverview() {
 
   if (!data) return null;
 
+  const allNs = data.namespaces.map(n => n.namespace);
+  const filtered = nsFilter
+    ? data.namespaces.filter(n => n.namespace === nsFilter)
+    : data.namespaces;
+
   return (
     <div className="ov-root">
       {/* stats bar */}
@@ -204,12 +210,30 @@ export default function ClusterOverview() {
         </div>
       </div>
 
+      {/* namespace filter */}
+      <div className="ov-filter-bar">
+        <label className="ov-filter-label">Namespace:</label>
+        <select
+          className="ov-filter-select"
+          value={nsFilter}
+          onChange={e => setNsFilter(e.target.value)}
+        >
+          <option value="">Todos ({allNs.length})</option>
+          {allNs.map(ns => (
+            <option key={ns} value={ns}>{ns}</option>
+          ))}
+        </select>
+        {nsFilter && (
+          <button className="ov-filter-clear" onClick={() => setNsFilter('')}>✕ Limpar</button>
+        )}
+      </div>
+
       {/* namespaces */}
       <div className="ov-namespaces">
-        {data.namespaces.length === 0 ? (
-          <div className="ov-empty">Nenhum pod encontrado no cluster.</div>
+        {filtered.length === 0 ? (
+          <div className="ov-empty">Nenhum namespace encontrado.</div>
         ) : (
-          data.namespaces.map((ns, i) => (
+          filtered.map((ns, i) => (
             <NamespaceCard key={i} ns={ns} metricsAvailable={data.metrics_available} />
           ))
         )}
