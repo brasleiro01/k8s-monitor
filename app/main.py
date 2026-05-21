@@ -20,6 +20,7 @@ from config import (
     LOG_LEVEL,
     NAMESPACES,
 )
+from cluster_overview import fetch_cluster_overview
 from k8s_watcher import get_known_namespaces, load_k8s_config
 from monitor import Monitor
 from namespace_checker import check_namespace_stream
@@ -242,6 +243,12 @@ async def check_namespace(body: CheckNamespaceBody):
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     })
+
+
+@app.get("/api/cluster-overview")
+async def cluster_overview():
+    data = await asyncio.to_thread(fetch_cluster_overview)
+    return data
 
 
 @app.get("/api/incidents/{incident_id}/postmortem")

@@ -22,6 +22,12 @@ export async function reopenIncident(id) {
   return res.json();
 }
 
+export async function fetchClusterOverview() {
+  const res = await fetch(`${BASE}/cluster-overview`);
+  if (!res.ok) throw new Error('Failed to fetch cluster overview');
+  return res.json();
+}
+
 export async function fetchNamespaces() {
   const res = await fetch(`${BASE}/namespaces`);
   if (!res.ok) return [];

@@ -6,6 +6,7 @@ import NamespaceGroup from './components/NamespaceGroup.jsx';
 import PostmortemsDrawer from './components/PostmortemsDrawer.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import NamespaceChecker from './components/NamespaceChecker.jsx';
+import ClusterOverview from './components/ClusterOverview.jsx';
 
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '', dateFrom: '', dateTo: '' };
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -138,6 +139,7 @@ export default function App({ googleClientId = '' }) {
   const [error, setError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [checkerOpen, setCheckerOpen] = useState(false);
+  const [tab, setTab] = useState('alerts');
 
   const load = useCallback(async () => {
     try {
@@ -286,30 +288,52 @@ export default function App({ googleClientId = '' }) {
         />
       )}
 
-      <main>
-        {error && (
-          <div className="api-error">{error}</div>
-        )}
-        <StatsBar incidents={incidents} />
-        <Filters incidents={incidents} filters={filters} onChange={setFilters} />
-        <div className="incident-list">
-          {groups.length === 0 ? (
-            <div className="empty">
-              {incidents.length === 0
-                ? 'Nenhum incidente ainda — o monitor está observando seus pods.'
-                : 'Nenhum incidente corresponde aos filtros selecionados.'}
-            </div>
-          ) : (
-            groups.map(g => (
-              <NamespaceGroup
-                key={g.namespace}
-                namespace={g.namespace}
-                pods={g.pods}
-                onStatusChange={handleStatusChange}
-              />
-            ))
+      <nav className="tabs-bar">
+        <button
+          className={`tab-btn${tab === 'overview' ? ' active' : ''}`}
+          onClick={() => setTab('overview')}
+        >
+          🖥 Visão Geral
+        </button>
+        <button
+          className={`tab-btn${tab === 'alerts' ? ' active' : ''}`}
+          onClick={() => setTab('alerts')}
+        >
+          🚨 Alertas
+          {incidents.filter(i => !i.resolved).length > 0 && (
+            <span className="tab-badge">{incidents.filter(i => !i.resolved).length}</span>
           )}
-        </div>
+        </button>
+      </nav>
+
+      <main>
+        {tab === 'overview' && <ClusterOverview />}
+
+        {tab === 'alerts' && (
+          <>
+            {error && <div className="api-error">{error}</div>}
+            <StatsBar incidents={incidents} />
+            <Filters incidents={incidents} filters={filters} onChange={setFilters} />
+            <div className="incident-list">
+              {groups.length === 0 ? (
+                <div className="empty">
+                  {incidents.length === 0
+                    ? 'Nenhum incidente ainda — o monitor está observando seus pods.'
+                    : 'Nenhum incidente corresponde aos filtros selecionados.'}
+                </div>
+              ) : (
+                groups.map(g => (
+                  <NamespaceGroup
+                    key={g.namespace}
+                    namespace={g.namespace}
+                    pods={g.pods}
+                    onStatusChange={handleStatusChange}
+                  />
+                ))
+              )}
+            </div>
+          </>
+        )}
       </main>
 
       {showUserMenu && (
