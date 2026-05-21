@@ -114,8 +114,8 @@ def _probe_desc(probe) -> str | None:
         return f"HTTP {probe.http_get.path or '/'}:{probe.http_get.port}"
     if probe.tcp_socket:
         return f"TCP :{probe.tcp_socket.port}"
-    if probe.exec:
-        cmd = " ".join(probe.exec.command or [])
+    if probe._exec:
+        cmd = " ".join(probe._exec.command or [])
         return f"exec: {cmd[:50]}"
     if probe.grpc:
         return f"gRPC :{probe.grpc.port}"
