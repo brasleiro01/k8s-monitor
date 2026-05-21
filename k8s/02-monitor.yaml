@@ -55,7 +55,7 @@ spec:
             secretName: k8s-monitor-sa-token
       containers:
         - name: app
-          image: vinnioliver66/k8s-monitor:v1.0.27
+          image: vinnioliver66/k8s-monitor:v1.0.28
           imagePullPolicy: Always
           volumeMounts:
             - name: sa-token
