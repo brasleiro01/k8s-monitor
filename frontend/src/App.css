@@ -1545,3 +1545,256 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
   line-height: 1.5;
 }
 .nsc-global-recs li::before { content: "→"; position: absolute; left: 0; color: var(--blue); }
+
+/* ---- Namespace Checker — novos estilos (recursos, probes, containers) ---- */
+.nsc-btn-export {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nsc-btn-export:hover { border-color: var(--blue); color: var(--blue); }
+
+.nsc-step-cat {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  min-width: 110px;
+  flex-shrink: 0;
+}
+
+.nsc-pod-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  color: inherit;
+}
+
+.nsc-pod-meta {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+}
+
+.nsc-expand {
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.nsc-pod-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nsc-containers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nsc-container {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.nsc-container-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.nsc-cstate {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.nsc-cstate.nsc-cstate-ok  { background: var(--low); }
+.nsc-cstate.nsc-cstate-bad { background: var(--critical); }
+
+.nsc-notready {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(229,62,62,0.1);
+  color: var(--critical);
+  border: 1px solid rgba(229,62,62,0.25);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.nsc-resources {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nsc-res-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.nsc-res-label {
+  width: 32px;
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.nsc-res-nolimit {
+  font-size: 11px;
+  color: var(--medium);
+  font-style: italic;
+}
+
+.nsc-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.nsc-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg3);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  max-width: 160px;
+}
+
+.nsc-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.nsc-res-vals {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.nsc-probes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nsc-probe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.nsc-probe-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.nsc-probe-dot.ok   { background: var(--low); }
+.nsc-probe-dot.miss { background: var(--medium); }
+
+.nsc-probe-label {
+  color: var(--muted);
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.nsc-probe-val {
+  color: var(--text);
+  font-family: monospace;
+  font-size: 11px;
+}
+.nsc-probe-val em {
+  font-style: italic;
+  color: var(--medium);
+  font-family: inherit;
+}
+
+.nsc-events {
+  background: rgba(229,62,62,0.05);
+  border: 1px solid rgba(229,62,62,0.2);
+  border-radius: 7px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nsc-events-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--critical);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+}
+
+.nsc-event {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.5;
+  padding-left: 10px;
+  position: relative;
+}
+.nsc-event::before { content: "•"; position: absolute; left: 0; color: var(--critical); }
+
+.nsc-metrics-warn {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.nsc-metrics-tip {
+  background: var(--blue-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nsc-metrics-tip code {
+  display: block;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text);
+  margin-top: 4px;
+}
