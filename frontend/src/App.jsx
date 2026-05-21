@@ -100,7 +100,7 @@ function K8sLogo({ size = 28 }) {
   );
 }
 
-export default function App({ googleClientId = '' }) {
+export default function App({ googleClientId = '', configuredNamespaces = [] }) {
   // ---- auth / tema ---- //
   const [user, setUser] = useState(loadUser);
   const [theme, setTheme] = useState(() => {
@@ -313,7 +313,7 @@ export default function App({ googleClientId = '' }) {
           <>
             {error && <div className="api-error">{error}</div>}
             <StatsBar incidents={incidents} />
-            <Filters incidents={incidents} filters={filters} onChange={setFilters} />
+            <Filters incidents={incidents} filters={filters} onChange={setFilters} configuredNamespaces={configuredNamespaces} />
             <div className="incident-list">
               {groups.length === 0 ? (
                 <div className="empty">

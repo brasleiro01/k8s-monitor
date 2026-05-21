@@ -9,10 +9,11 @@ fetch('/api/config')
   .catch(() => ({}))
   .then(config => {
     const clientId = config.googleClientId || '';
+    const namespaces = config.namespaces || [];
     ReactDOM.createRoot(document.getElementById('root')).render(
       <React.StrictMode>
         <GoogleOAuthProvider clientId={clientId}>
-          <App googleClientId={clientId} />
+          <App googleClientId={clientId} configuredNamespaces={namespaces} />
         </GoogleOAuthProvider>
       </React.StrictMode>
     );

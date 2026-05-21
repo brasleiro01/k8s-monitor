@@ -1,5 +1,7 @@
-export default function Filters({ incidents, filters, onChange }) {
-  const namespaces = [...new Set(incidents.map(i => i.namespace))].sort();
+export default function Filters({ incidents, filters, onChange, configuredNamespaces = [] }) {
+  const namespaces = configuredNamespaces.length > 0
+    ? configuredNamespaces
+    : [...new Set(incidents.map(i => i.namespace))].sort();
 
   function clearDates() {
     onChange({ ...filters, dateFrom: '', dateTo: '' });

@@ -122,7 +122,7 @@ app.add_middleware(
 # ------------------------------------------------------------------ #
 @app.get("/api/config")
 async def api_config():
-    return {"googleClientId": GOOGLE_CLIENT_ID}
+    return {"googleClientId": GOOGLE_CLIENT_ID, "namespaces": NAMESPACES}
 
 
 @app.get("/api/incidents")
