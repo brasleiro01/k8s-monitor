@@ -130,18 +130,25 @@ def fetch_cluster_overview() -> dict:
                             c_state = f"terminated/{st.terminated.reason or ''}"
 
             containers.append({
-                "name": c.name,
-                "ready": c_ready,
-                "state": c_state,
-                "cpu_req": cpu_req,
-                "cpu_lim": cpu_lim,
-                "mem_req": mem_req,
-                "mem_lim": mem_lim,
-                "cpu_use": cpu_use if metrics_available else "N/A",
-                "mem_use": mem_use if metrics_available else "N/A",
-                "cpu_pct": cpu_pct if metrics_available else None,
-                "mem_pct": mem_pct if metrics_available else None,
-                "liveness": _probe_desc(c.liveness_probe),
+                "name":      c.name,
+                "image":     c.image or "",
+                "ports":     [
+                    {"containerPort": p.container_port, "protocol": p.protocol or "TCP"}
+                    for p in (c.ports or [])
+                ],
+                "ready":     c_ready,
+                "state":     c_state,
+                "cpu_req":   cpu_req,
+                "cpu_lim":   cpu_lim,
+                "mem_req":   mem_req,
+                "mem_lim":   mem_lim,
+                "cpu_use":   cpu_use if metrics_available else "N/A",
+                "mem_use":   mem_use if metrics_available else "N/A",
+                "cpu_pct":   cpu_pct if metrics_available else None,
+                "mem_pct":   mem_pct if metrics_available else None,
+                "cpu_use_m": cpu_use_m,
+                "mem_use_bytes": mem_use_b,
+                "liveness":  _probe_desc(c.liveness_probe),
                 "readiness": _probe_desc(c.readiness_probe),
             })
 

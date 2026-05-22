@@ -28,6 +28,16 @@ export async function fetchClusterOverview() {
   return res.json();
 }
 
+export async function recommendPodConfig(info) {
+  const res = await fetch(`${BASE}/overview/recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(info),
+  });
+  if (!res.ok) throw new Error('Failed to get recommendations');
+  return res.json();
+}
+
 export async function fetchNamespaces() {
   const res = await fetch(`${BASE}/namespaces`);
   if (!res.ok) return [];

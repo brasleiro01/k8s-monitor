@@ -314,6 +314,29 @@ async def cluster_overview():
     return data
 
 
+class RecommendBody(BaseModel):
+    namespace: str
+    pod: str
+    container: str
+    image: str = ""
+    ports: list = []
+    cpu_use: str = "N/A"
+    mem_use: str = "N/A"
+    cpu_use_m: Optional[int] = None
+    mem_use_bytes: Optional[int] = None
+    missing_probes: bool = False
+    missing_limits: bool = False
+    has_liveness: bool = False
+    has_readiness: bool = False
+
+
+@app.post("/api/overview/recommend")
+async def recommend_pod_config(body: RecommendBody):
+    from pod_advisor import get_pod_recommendations
+    result = await asyncio.to_thread(get_pod_recommendations, body.model_dump())
+    return result
+
+
 @app.get("/api/incidents/{incident_id}/postmortem")
 async def get_postmortem(incident_id: str, view: str = "0"):
     row = await asyncio.to_thread(db.get_postmortem_content, incident_id)
