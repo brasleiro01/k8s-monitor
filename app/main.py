@@ -24,6 +24,7 @@ from cluster_overview import fetch_cluster_overview
 from k8s_watcher import get_known_namespaces, load_k8s_config
 from monitor import Monitor
 from namespace_checker import check_namespace_stream
+from scheduler import ReportScheduler
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -95,12 +96,15 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=monitor.start, daemon=True)
     t.start()
 
-    polling = asyncio.create_task(_polling_task())
+    polling   = asyncio.create_task(_polling_task())
+    scheduler = ReportScheduler(broadcast_fn=broadcast)
+    await scheduler.start()
 
     yield
 
     monitor.stop()
     polling.cancel()
+    await scheduler.stop()
     logger.info("Aplicação encerrada.")
 
 
@@ -243,6 +247,64 @@ async def check_namespace(body: CheckNamespaceBody):
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     })
+
+
+class ScheduleBody(BaseModel):
+    times_per_day: int
+    enabled: bool = True
+
+
+@app.get("/api/report-schedule")
+async def get_report_schedule():
+    s = await asyncio.to_thread(db.get_report_schedule)
+    return s or {"times_per_day": 1, "enabled": False, "next_run": None}
+
+
+@app.post("/api/report-schedule")
+async def set_report_schedule(body: ScheduleBody):
+    if not 1 <= body.times_per_day <= 24:
+        raise HTTPException(400, "times_per_day deve ser entre 1 e 24")
+    await asyncio.to_thread(db.set_report_schedule, body.times_per_day, body.enabled)
+    return {"ok": True}
+
+
+@app.get("/api/cluster-reports")
+async def list_reports():
+    rows = await asyncio.to_thread(db.list_cluster_reports)
+    return [_fmt_report(r) for r in rows]
+
+
+@app.get("/api/cluster-reports/{report_id}")
+async def get_report(report_id: str):
+    row = await asyncio.to_thread(db.get_cluster_report, report_id)
+    if not row:
+        raise HTTPException(404, "Relatório não encontrado")
+    return _fmt_report(row, full=True)
+
+
+def _fmt_report(r: dict, full: bool = False) -> dict:
+    ns = r["namespaces"]
+    if isinstance(ns, str):
+        import json as _json
+        ns = _json.loads(ns)
+    out = {
+        "id":             r["id"],
+        "created_at":     r["created_at"].isoformat() if r["created_at"] else None,
+        "namespaces":     ns,
+        "overall_health": r["overall_health"],
+        "healthy_count":  r["healthy_count"],
+        "warning_count":  r["warning_count"],
+        "critical_count": r["critical_count"],
+        "total_pods":     r["total_pods"],
+        "summary":        r["summary"],
+    }
+    if full:
+        details = r.get("details", [])
+        if isinstance(details, str):
+            import json as _json
+            details = _json.loads(details)
+        out["details"] = details
+    return out
 
 
 @app.get("/api/cluster-overview")

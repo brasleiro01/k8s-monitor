@@ -83,6 +83,43 @@ def ensure_schema() -> bool:
     return _get_conn() is not None
 
 
+def ensure_report_tables() -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS report_schedule (
+                    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                    times_per_day INTEGER NOT NULL DEFAULT 1,
+                    enabled BOOLEAN NOT NULL DEFAULT false,
+                    next_run TIMESTAMPTZ,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                INSERT INTO report_schedule (id, times_per_day, enabled)
+                VALUES (1, 1, false) ON CONFLICT DO NOTHING;
+
+                CREATE TABLE IF NOT EXISTS cluster_reports (
+                    id VARCHAR(36) PRIMARY KEY,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    namespaces JSONB NOT NULL DEFAULT '[]',
+                    overall_health VARCHAR(20),
+                    healthy_count INTEGER DEFAULT 0,
+                    warning_count INTEGER DEFAULT 0,
+                    critical_count INTEGER DEFAULT 0,
+                    total_pods INTEGER DEFAULT 0,
+                    summary TEXT,
+                    details JSONB DEFAULT '[]'
+                );
+            """)
+        logger.info("Tabelas de relatórios verificadas/criadas")
+        return True
+    except Exception as exc:
+        logger.error("Erro ao criar tabelas de relatórios: %s", exc)
+        return False
+
+
 def is_configured() -> bool:
     return bool(DATABASE_URL)
 
@@ -247,6 +284,134 @@ def load_namespaces() -> list[str]:
     except Exception as exc:
         logger.error("Erro ao carregar namespaces: %s", exc)
         return []
+
+
+# ------------------------------------------------------------------ #
+# Report schedule                                                      #
+# ------------------------------------------------------------------ #
+
+def get_report_schedule() -> dict | None:
+    conn = _get_conn()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT times_per_day, enabled, next_run FROM report_schedule WHERE id = 1")
+            row = cur.fetchone()
+            if not row:
+                return {"times_per_day": 1, "enabled": False, "next_run": None}
+            return {
+                "times_per_day": row[0],
+                "enabled":       row[1],
+                "next_run":      row[2].isoformat() if row[2] else None,
+            }
+    except Exception as exc:
+        logger.error("Erro ao obter schedule: %s", exc)
+        return None
+
+
+def set_report_schedule(times_per_day: int, enabled: bool) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        from datetime import datetime, timedelta, timezone
+        next_run = datetime.now(timezone.utc) + timedelta(seconds=86400 / times_per_day)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO report_schedule (id, times_per_day, enabled, next_run, updated_at)
+                VALUES (1, %s, %s, %s, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    times_per_day = EXCLUDED.times_per_day,
+                    enabled       = EXCLUDED.enabled,
+                    next_run      = EXCLUDED.next_run,
+                    updated_at    = NOW()
+            """, (times_per_day, enabled, next_run))
+        return True
+    except Exception as exc:
+        logger.error("Erro ao salvar schedule: %s", exc)
+        return False
+
+
+def update_schedule_next_run(next_run) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE report_schedule SET next_run = %s WHERE id = 1",
+                (next_run,),
+            )
+        return True
+    except Exception as exc:
+        logger.error("Erro ao atualizar next_run: %s", exc)
+        return False
+
+
+# ------------------------------------------------------------------ #
+# Cluster reports                                                      #
+# ------------------------------------------------------------------ #
+
+def save_cluster_report(report: dict) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO cluster_reports (
+                    id, namespaces, overall_health, healthy_count,
+                    warning_count, critical_count, total_pods, summary, details
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                report["id"],
+                json.dumps(report["namespaces"]),
+                report["overall_health"],
+                report["healthy_count"],
+                report["warning_count"],
+                report["critical_count"],
+                report["total_pods"],
+                report["summary"],
+                json.dumps(report.get("details", [])),
+            ))
+        return True
+    except Exception as exc:
+        logger.error("Erro ao salvar relatório: %s", exc)
+        return False
+
+
+def list_cluster_reports(limit: int = 30) -> list:
+    conn = _get_conn()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, created_at, namespaces, overall_health,
+                       healthy_count, warning_count, critical_count, total_pods, summary
+                FROM cluster_reports ORDER BY created_at DESC LIMIT %s
+            """, (limit,))
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+    except Exception as exc:
+        logger.error("Erro ao listar relatórios: %s", exc)
+        return []
+
+
+def get_cluster_report(report_id: str) -> dict | None:
+    conn = _get_conn()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cluster_reports WHERE id = %s", (report_id,))
+            cols = [d[0] for d in cur.description]
+            row  = cur.fetchone()
+            return dict(zip(cols, row)) if row else None
+    except Exception as exc:
+        logger.error("Erro ao obter relatório: %s", exc)
+        return None
 
 
 def _row_to_incident(r: dict) -> dict:

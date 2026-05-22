@@ -66,10 +66,39 @@ export async function streamNamespaceCheck(namespace, { onProgress, onResult, on
   }
 }
 
-export function subscribeToEvents(onIncident, onUpdate) {
+export function subscribeToEvents(onIncident, onUpdate, onReport) {
   const source = new EventSource(`${BASE}/events`);
   source.addEventListener('incident', e => onIncident(JSON.parse(e.data)));
   source.addEventListener('update', e => onUpdate(JSON.parse(e.data)));
+  if (onReport) source.addEventListener('report', e => onReport(JSON.parse(e.data)));
   source.onerror = () => source.close();
   return () => source.close();
+}
+
+export async function fetchReportSchedule() {
+  const res = await fetch(`${BASE}/report-schedule`);
+  if (!res.ok) throw new Error('Failed to fetch schedule');
+  return res.json();
+}
+
+export async function setReportSchedule(timesPerDay, enabled) {
+  const res = await fetch(`${BASE}/report-schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ times_per_day: timesPerDay, enabled }),
+  });
+  if (!res.ok) throw new Error('Failed to set schedule');
+  return res.json();
+}
+
+export async function fetchClusterReports() {
+  const res = await fetch(`${BASE}/cluster-reports`);
+  if (!res.ok) throw new Error('Failed to fetch reports');
+  return res.json();
+}
+
+export async function fetchClusterReportDetail(id) {
+  const res = await fetch(`${BASE}/cluster-reports/${id}`);
+  if (!res.ok) throw new Error('Failed to fetch report');
+  return res.json();
 }

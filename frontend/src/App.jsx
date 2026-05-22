@@ -7,6 +7,7 @@ import PostmortemsDrawer from './components/PostmortemsDrawer.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import NamespaceChecker from './components/NamespaceChecker.jsx';
 import ClusterOverview from './components/ClusterOverview.jsx';
+import ScheduledReports from './components/ScheduledReports.jsx';
 
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '', dateFrom: '', dateTo: '' };
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -137,8 +138,11 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [checkerOpen, setCheckerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [checkerOpen, setCheckerOpen]   = useState(false);
+  const [reportsOpen, setReportsOpen]   = useState(false);
+  const [newReportId, setNewReportId]   = useState(null);
+  const [reportsBadge, setReportsBadge] = useState(0);
   const [tab, setTab] = useState('alerts');
 
   const load = useCallback(async () => {
@@ -172,6 +176,10 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
             ? { ...i, resolved: false, postmortem_file: null }
             : i));
         }
+      },
+      report => {
+        setNewReportId(report.id);
+        setReportsBadge(n => n + 1);
       }
     );
     const heartbeat = setInterval(load, 30000);
@@ -238,6 +246,17 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
           </button>
 
           <button
+            className={`btn-reports${reportsOpen ? ' active' : ''}`}
+            onClick={() => { setReportsOpen(o => !o); setReportsBadge(0); }}
+            title="Relatórios agendados"
+          >
+            📊 Relatórios
+            {reportsBadge > 0 && (
+              <span className="pm-count-badge">{reportsBadge}</span>
+            )}
+          </button>
+
+          <button
             className={`btn-postmortems${drawerOpen ? ' active' : ''}`}
             onClick={() => setDrawerOpen(o => !o)}
             title="Histórico de resoluções"
@@ -285,6 +304,13 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
         <PostmortemsDrawer
           incidents={incidents}
           onClose={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {reportsOpen && (
+        <ScheduledReports
+          onClose={() => setReportsOpen(false)}
+          newReportId={newReportId}
         />
       )}
 

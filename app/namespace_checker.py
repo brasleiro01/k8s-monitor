@@ -315,6 +315,19 @@ def _analyze_with_gemini(namespace: str, pods: list) -> dict:
         return _basic_analysis(pods)
 
 
+def check_namespace_result(namespace: str) -> dict | None:
+    """Executa verificação sincronamente e retorna apenas o resultado final."""
+    for chunk in check_namespace_stream(namespace):
+        if chunk.startswith('event: result\n'):
+            for line in chunk.split('\n'):
+                if line.startswith('data: '):
+                    try:
+                        return json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        pass
+    return None
+
+
 def _basic_analysis(pods: list) -> dict:
     results, h, w, c = [], 0, 0, 0
     for p in pods:
