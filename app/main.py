@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
         logger.error("[db] banco de dados indisponível — incidentes não serão persistidos")
 
     load_k8s_config()
-    monitor = Monitor()
+    monitor = Monitor(broadcast_fn=broadcast)
     t = threading.Thread(target=monitor.start, daemon=True)
     t.start()
 
