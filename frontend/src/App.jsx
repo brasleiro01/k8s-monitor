@@ -47,14 +47,14 @@ function saveTimezone(name, tz) {
 }
 
 const TZ_OPTIONS = [
-  { value: 'America/Sao_Paulo',    label: 'São Paulo (UTC-3)' },
-  { value: 'America/Manaus',       label: 'Manaus (UTC-4)' },
-  { value: 'America/Belem',        label: 'Belém / Fortaleza (UTC-3)' },
-  { value: 'America/Noronha',      label: 'Fernando de Noronha (UTC-2)' },
-  { value: 'UTC',                  label: 'UTC (UTC+0)' },
-  { value: 'America/New_York',     label: 'Nova York (UTC-5)' },
-  { value: 'Europe/Lisbon',        label: 'Lisboa (UTC+1)' },
-  { value: 'Europe/Madrid',        label: 'Madrid / Paris (UTC+2)' },
+  { value: 'America/Sao_Paulo',    label: 'São Paulo (UTC-3)',          short: 'BRT'  },
+  { value: 'America/Manaus',       label: 'Manaus (UTC-4)',             short: 'AMT'  },
+  { value: 'America/Belem',        label: 'Belém / Fortaleza (UTC-3)',  short: 'BRT'  },
+  { value: 'America/Noronha',      label: 'Noronha (UTC-2)',            short: 'FNT'  },
+  { value: 'UTC',                  label: 'UTC (UTC+0)',                short: 'UTC'  },
+  { value: 'America/New_York',     label: 'Nova York (UTC-5)',          short: 'EST'  },
+  { value: 'Europe/Lisbon',        label: 'Lisboa (UTC+1)',             short: 'WET'  },
+  { value: 'Europe/Madrid',        label: 'Madrid / Paris (UTC+2)',     short: 'CET'  },
 ];
 
 function TopbarClock({ timezone }) {
@@ -69,7 +69,7 @@ function TopbarClock({ timezone }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [timezone]);
-  const tzLabel = TZ_OPTIONS.find(o => o.value === timezone)?.label.split(' ')[0] || timezone;
+  const tzLabel = TZ_OPTIONS.find(o => o.value === timezone)?.short || 'UTC';
   return (
     <div className="topbar-clock">
       <span className="topbar-clock-time">{time}</span>
@@ -281,9 +281,9 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
 
         <div className={`dot${hasCritical ? ' error' : ''}`} />
 
-        <div className="live-badge">
+        <div className="live-badge" title={connected ? 'Conectado' : 'Conectando...'}>
           <span className={connected ? '' : 'off'} />
-          {connected ? 'Ao vivo' : 'Conectando...'}
+          {!connected && <span className="live-badge-text">Conectando...</span>}
         </div>
 
         <TopbarClock timezone={timezone} />

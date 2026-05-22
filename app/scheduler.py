@@ -142,23 +142,105 @@ class ReportScheduler:
     def _notify_discord(self, report: dict):
         if not DISCORD_WEBHOOK_URL:
             return
-        health  = report["overall_health"]
-        emoji   = HEALTH_EMOJI.get(health, "❓")
-        ns_list = ", ".join(f"`{n}`" for n in report["namespaces"])
+        health = report["overall_health"]
+        emoji  = HEALTH_EMOJI.get(health, "❓")
 
+        # ── Coletar pods com problemas e classificar tipos de issues ──
+        problem_pods = []
+        issue_types: set[str] = set()
+
+        for ns_detail in (report.get("details") or []):
+            ns_name = ns_detail.get("namespace", "?")
+            for pod in (ns_detail.get("pods") or []):
+                if pod.get("health") == "healthy":
+                    continue
+                pname    = pod.get("pod", "?")
+                phase    = pod.get("phase", "Unknown")
+                restarts = pod.get("restarts", 0)
+                issues   = list(pod.get("issues") or [])
+
+                if restarts > 2:
+                    issues.insert(0, f"↺ {restarts} restarts")
+                    issue_types.add("restarts")
+                if phase not in ("Running", "Succeeded"):
+                    issues.insert(0, f"Fase: **{phase}**")
+                    issue_types.add("not_running")
+
+                for iss in issues:
+                    low = iss.lower()
+                    if "limit" in low or "sem limit" in low:
+                        issue_types.add("no_limits")
+                    if "probe" in low:
+                        issue_types.add("no_probes")
+
+                pod_emoji = HEALTH_EMOJI.get(pod.get("health", "warning"), "⚠️")
+                issues_text = "\n".join(f"  › {i}" for i in issues[:3])
+                problem_pods.append(f"{pod_emoji} `{ns_name}/{pname}`\n{issues_text}")
+
+        # ── Descrição: lista os pods problemáticos ──
+        if problem_pods:
+            block = "\n\n".join(problem_pods[:5])
+            if len(problem_pods) > 5:
+                block += f"\n\n… e mais {len(problem_pods) - 5} pod(s) com problemas"
+            description = block
+        else:
+            description = report.get("summary", "Relatório concluído.")
+
+        # ── Dicas de resolução contextuais ──
+        tips = []
+        if "not_running" in issue_types:
+            tips.append(
+                "🔍 **Pod fora do ar** — identifique o motivo:\n"
+                "  `kubectl describe pod <POD> -n <NS>` (veja a seção Events)"
+            )
+        if "restarts" in issue_types:
+            tips.append(
+                "🔄 **Restarts excessivos** — veja o que causou o crash:\n"
+                "  `kubectl logs <POD> -n <NS> --previous`"
+            )
+        if "no_limits" in issue_types:
+            tips.append(
+                "⚙️ **Sem resource limits** — o pod pode consumir toda CPU/memória do nó.\n"
+                "  Adicione `resources.requests` e `resources.limits` no manifest do Deployment."
+            )
+        if "no_probes" in issue_types:
+            tips.append(
+                "❤️ **Sem health probes** — o Kubernetes não sabe se sua app está saudável.\n"
+                "  Use o botão **🤖 Sugestão IA** no painel K8s Monitor para gerar probes automaticamente."
+            )
+
+        # ── Monta o embed ──
         embed = {
-            "title":       f"{emoji} Relatório Agendado — K8s Monitor",
-            "description": report["summary"],
-            "color":       HEALTH_COLOR.get(health, 0xd69e2e),
-            "timestamp":   datetime.now(timezone.utc).isoformat(),
-            "fields": [
-                {"name": "Namespaces",   "value": ns_list,                          "inline": False},
-                {"name": "🔴 Críticos",  "value": str(report["critical_count"]),    "inline": True},
-                {"name": "⚠️ Avisos",    "value": str(report["warning_count"]),     "inline": True},
-                {"name": "✅ Saudáveis", "value": str(report["healthy_count"]),     "inline": True},
-            ],
-            "footer": {"text": "K8s Monitor — Relatório automático agendado"},
+            "title":     f"{emoji} Relatório do Cluster — K8s Monitor",
+            "description": description,
+            "color":     HEALTH_COLOR.get(health, 0xd69e2e),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "fields":    [],
+            "footer":    {"text": "K8s Monitor • Abra o painel para detalhes completos"},
         }
+
+        if tips:
+            embed["fields"].append({
+                "name":   "💡 Como resolver",
+                "value":  "\n\n".join(tips)[:1024],
+                "inline": False,
+            })
+
+        embed["fields"].append({
+            "name":  "📊 Resumo",
+            "value": (
+                f"🔴 Críticos: **{report['critical_count']}**\n"
+                f"⚠️ Avisos:  **{report['warning_count']}**\n"
+                f"✅ Saudáveis: **{report['healthy_count']}**"
+            ),
+            "inline": True,
+        })
+        embed["fields"].append({
+            "name":   "🗂️ Namespaces",
+            "value":  ", ".join(f"`{n}`" for n in report["namespaces"]),
+            "inline": True,
+        })
+
         try:
             requests.post(
                 DISCORD_WEBHOOK_URL,
