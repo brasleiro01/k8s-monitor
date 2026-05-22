@@ -52,6 +52,7 @@ class ReplicaWatcher:
         return True
 
     def _watch(self, kind: str):
+        retry_delay = 5
         while self._running:
             try:
                 apps_v1 = client.AppsV1Api(api_client=_new_api_client())
@@ -63,6 +64,7 @@ class ReplicaWatcher:
                     else apps_v1.list_stateful_set_for_all_namespaces
                 )
 
+                retry_delay = 5  # reset on successful connect
                 for event in w.stream(list_fn, timeout_seconds=0):
                     if not self._running:
                         break
@@ -93,8 +95,20 @@ class ReplicaWatcher:
                         self._maybe_recover(resource_key, inc_id, name, ns, kind)
 
             except Exception as e:
-                logger.warning("[replica-watcher] Erro ao watch %s: %s — retry em 5s", kind, e)
-                time.sleep(5)
+                err_str = str(e)
+                if "403" in err_str or "Forbidden" in err_str:
+                    retry_delay = 120
+                    logger.warning(
+                        "[replica-watcher] %s: sem permissão RBAC para apps/%ss "
+                        "(adicione 'apps/deployments,statefulsets get/list/watch' ao ClusterRole) "
+                        "— retry em %ds",
+                        kind, kind.lower(), retry_delay,
+                    )
+                else:
+                    retry_delay = min(retry_delay * 2, 60)
+                    logger.warning("[replica-watcher] Erro ao watch %s: %s — retry em %ds",
+                                   kind, e, retry_delay)
+                time.sleep(retry_delay)
 
     def _maybe_alarm(self, kind: str, ns: str, name: str,
                      resource_key: str, inc_id: str,
