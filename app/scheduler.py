@@ -59,7 +59,7 @@ class ReportScheduler:
                 now = datetime.now(timezone.utc)
 
                 if next_run is None or next_run <= now:
-                    await self._run_report(schedule["times_per_day"])
+                    await self._run_report(schedule.get("scheduled_time", "08:00"))
                 else:
                     wait = (next_run - now).total_seconds()
                     await asyncio.sleep(min(wait, 60))
@@ -70,18 +70,22 @@ class ReportScheduler:
                 logger.error("[scheduler] Erro no loop: %s", e)
                 await asyncio.sleep(60)
 
-    async def _run_report(self, times_per_day: int):
+    def _next_run_for_time(self, scheduled_time: str) -> datetime:
+        h, m = map(int, scheduled_time.split(":"))
+        now = datetime.now(timezone.utc)
+        candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    async def _run_report(self, scheduled_time: str = "08:00"):
         import db
         from namespace_checker import check_namespace_result
 
         namespaces = NAMESPACES
         if not namespaces:
             logger.warning("[scheduler] NAMESPACES vazio — relatório ignorado")
-            interval = 86400 / times_per_day
-            await asyncio.to_thread(
-                db.update_schedule_next_run,
-                datetime.now(timezone.utc) + timedelta(seconds=interval),
-            )
+            await asyncio.to_thread(db.update_schedule_next_run, self._next_run_for_time(scheduled_time))
             return
 
         logger.info("[scheduler] Iniciando relatório — namespaces: %s", namespaces)
@@ -108,11 +112,7 @@ class ReportScheduler:
             if report["overall_health"] != "healthy":
                 await asyncio.to_thread(self._notify_discord, report)
 
-        interval = 86400 / times_per_day
-        await asyncio.to_thread(
-            db.update_schedule_next_run,
-            datetime.now(timezone.utc) + timedelta(seconds=interval),
-        )
+        await asyncio.to_thread(db.update_schedule_next_run, self._next_run_for_time(scheduled_time))
 
     def _build_report(self, namespaces: list, results: list) -> dict:
         overall = min(

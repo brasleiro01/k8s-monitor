@@ -250,21 +250,22 @@ async def check_namespace(body: CheckNamespaceBody):
 
 
 class ScheduleBody(BaseModel):
-    times_per_day: int
+    scheduled_time: str = "08:00"
     enabled: bool = True
 
 
 @app.get("/api/report-schedule")
 async def get_report_schedule():
     s = await asyncio.to_thread(db.get_report_schedule)
-    return s or {"times_per_day": 1, "enabled": False, "next_run": None}
+    return s or {"enabled": False, "next_run": None, "scheduled_time": "08:00"}
 
 
 @app.post("/api/report-schedule")
 async def set_report_schedule(body: ScheduleBody):
-    if not 1 <= body.times_per_day <= 24:
-        raise HTTPException(400, "times_per_day deve ser entre 1 e 24")
-    await asyncio.to_thread(db.set_report_schedule, body.times_per_day, body.enabled)
+    import re
+    if not re.match(r'^([01]\d|2[0-3]):[0-5]\d$', body.scheduled_time):
+        raise HTTPException(400, "scheduled_time deve estar no formato HH:MM")
+    await asyncio.to_thread(db.set_report_schedule, 1, body.enabled, body.scheduled_time)
     return {"ok": True}
 
 

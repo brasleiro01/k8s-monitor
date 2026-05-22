@@ -93,12 +93,13 @@ def ensure_report_tables() -> bool:
                 CREATE TABLE IF NOT EXISTS report_schedule (
                     id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
                     times_per_day INTEGER NOT NULL DEFAULT 1,
+                    scheduled_time VARCHAR(5) NOT NULL DEFAULT '08:00',
                     enabled BOOLEAN NOT NULL DEFAULT false,
                     next_run TIMESTAMPTZ,
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
-                INSERT INTO report_schedule (id, times_per_day, enabled)
-                VALUES (1, 1, false) ON CONFLICT DO NOTHING;
+                INSERT INTO report_schedule (id, times_per_day, scheduled_time, enabled)
+                VALUES (1, 1, '08:00', false) ON CONFLICT DO NOTHING;
 
                 CREATE TABLE IF NOT EXISTS cluster_reports (
                     id VARCHAR(36) PRIMARY KEY,
@@ -112,6 +113,10 @@ def ensure_report_tables() -> bool:
                     summary TEXT,
                     details JSONB DEFAULT '[]'
                 );
+            """)
+            cur.execute("""
+                ALTER TABLE report_schedule
+                ADD COLUMN IF NOT EXISTS scheduled_time VARCHAR(5) NOT NULL DEFAULT '08:00'
             """)
         logger.info("Tabelas de relatórios verificadas/criadas")
         return True
@@ -296,37 +301,43 @@ def get_report_schedule() -> dict | None:
         return None
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT times_per_day, enabled, next_run FROM report_schedule WHERE id = 1")
+            cur.execute("SELECT times_per_day, enabled, next_run, scheduled_time FROM report_schedule WHERE id = 1")
             row = cur.fetchone()
             if not row:
-                return {"times_per_day": 1, "enabled": False, "next_run": None}
+                return {"times_per_day": 1, "enabled": False, "next_run": None, "scheduled_time": "08:00"}
             return {
-                "times_per_day": row[0],
-                "enabled":       row[1],
-                "next_run":      row[2].isoformat() if row[2] else None,
+                "times_per_day":  row[0],
+                "enabled":        row[1],
+                "next_run":       row[2].isoformat() if row[2] else None,
+                "scheduled_time": row[3] or "08:00",
             }
     except Exception as exc:
         logger.error("Erro ao obter schedule: %s", exc)
         return None
 
 
-def set_report_schedule(times_per_day: int, enabled: bool) -> bool:
+def set_report_schedule(times_per_day: int, enabled: bool, scheduled_time: str = "08:00") -> bool:
     conn = _get_conn()
     if not conn:
         return False
     try:
         from datetime import datetime, timedelta, timezone
-        next_run = datetime.now(timezone.utc) + timedelta(seconds=86400 / times_per_day)
+        h, m = map(int, scheduled_time.split(":"))
+        now = datetime.now(timezone.utc)
+        candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO report_schedule (id, times_per_day, enabled, next_run, updated_at)
-                VALUES (1, %s, %s, %s, NOW())
+                INSERT INTO report_schedule (id, times_per_day, scheduled_time, enabled, next_run, updated_at)
+                VALUES (1, %s, %s, %s, %s, NOW())
                 ON CONFLICT (id) DO UPDATE SET
-                    times_per_day = EXCLUDED.times_per_day,
-                    enabled       = EXCLUDED.enabled,
-                    next_run      = EXCLUDED.next_run,
-                    updated_at    = NOW()
-            """, (times_per_day, enabled, next_run))
+                    times_per_day  = EXCLUDED.times_per_day,
+                    scheduled_time = EXCLUDED.scheduled_time,
+                    enabled        = EXCLUDED.enabled,
+                    next_run       = EXCLUDED.next_run,
+                    updated_at     = NOW()
+            """, (times_per_day, scheduled_time, enabled, candidate))
         return True
     except Exception as exc:
         logger.error("Erro ao salvar schedule: %s", exc)

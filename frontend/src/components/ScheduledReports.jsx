@@ -5,18 +5,21 @@ import {
 } from '../api.js';
 
 const H_ICON  = { healthy: '✅', warning: '⚠️', critical: '🔴' };
-const H_LABEL = { healthy: 'Saudável', warning: 'Atenção', critical: 'Crítico' };
 
-const FREQ_OPTIONS = [
-  { value: 1,  label: '1× por dia (a cada 24h)' },
-  { value: 2,  label: '2× por dia (a cada 12h)' },
-  { value: 3,  label: '3× por dia (a cada 8h)'  },
-  { value: 4,  label: '4× por dia (a cada 6h)'  },
-  { value: 6,  label: '6× por dia (a cada 4h)'  },
-  { value: 8,  label: '8× por dia (a cada 3h)'  },
-  { value: 12, label: '12× por dia (a cada 2h)' },
-  { value: 24, label: '24× por dia (a cada 1h)' },
-];
+function localTimeToUTC(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+function utcTimeToLocal(timeStr) {
+  if (!timeStr) return '08:00';
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 function fmtDt(iso) {
   if (!iso) return '—';
@@ -127,11 +130,11 @@ function ReportRow({ report, newReportId }) {
 }
 
 export default function ScheduledReports({ onClose, newReportId }) {
-  const [schedule,  setSchedule]  = useState(null);
-  const [reports,   setReports]   = useState([]);
-  const [saving,    setSaving]    = useState(false);
-  const [localFreq, setLocalFreq] = useState(1);
-  const [localOn,   setLocalOn]   = useState(false);
+  const [schedule,   setSchedule]  = useState(null);
+  const [reports,    setReports]   = useState([]);
+  const [saving,     setSaving]    = useState(false);
+  const [localTime,  setLocalTime] = useState('08:00');
+  const [localOn,    setLocalOn]   = useState(false);
 
   const loadAll = useCallback(async () => {
     const [sched, reps] = await Promise.all([
@@ -140,7 +143,7 @@ export default function ScheduledReports({ onClose, newReportId }) {
     ]);
     if (sched) {
       setSchedule(sched);
-      setLocalFreq(sched.times_per_day);
+      setLocalTime(utcTimeToLocal(sched.scheduled_time || '08:00'));
       setLocalOn(sched.enabled);
     }
     setReports(reps);
@@ -151,13 +154,14 @@ export default function ScheduledReports({ onClose, newReportId }) {
   async function handleSave() {
     setSaving(true);
     try {
-      await setReportSchedule(localFreq, localOn);
+      await setReportSchedule(localTimeToUTC(localTime), localOn);
       await loadAll();
     } catch { /* ignore */ }
     setSaving(false);
   }
 
-  const dirty = schedule && (localFreq !== schedule.times_per_day || localOn !== schedule.enabled);
+  const savedLocalTime = schedule ? utcTimeToLocal(schedule.scheduled_time || '08:00') : '08:00';
+  const dirty = schedule && (localTime !== savedLocalTime || localOn !== schedule.enabled);
 
   return (
     <div className="sr-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -168,7 +172,6 @@ export default function ScheduledReports({ onClose, newReportId }) {
         </div>
 
         <div className="sr-body">
-          {/* schedule config */}
           <div className="sr-config">
             <div className="sr-config-title">Agendamento</div>
 
@@ -185,22 +188,20 @@ export default function ScheduledReports({ onClose, newReportId }) {
             </div>
 
             <div className="sr-config-row">
-              <label className="sr-label">Frequência</label>
-              <select
-                className="sr-select"
-                value={localFreq}
-                onChange={e => setLocalFreq(Number(e.target.value))}
-                disabled={!localOn}
-              >
-                {FREQ_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <label className="sr-label">Horário</label>
+              <input
+                type="time"
+                className="sr-time-input"
+                value={localTime}
+                onChange={e => setLocalTime(e.target.value)}
+              />
+              <span className="sr-tz-note">horário local</span>
             </div>
 
-            {schedule?.next_run && localOn && (
+            {schedule?.next_run && (
               <div className="sr-next-run">
-                Próxima execução: <strong>{fmtDt(schedule.next_run)}</strong>
+                {localOn ? 'Próxima execução:' : 'Executaria em:'}
+                {' '}<strong>{fmtDt(schedule.next_run)}</strong>
                 <span className="sr-next-rel"> ({fmtRelative(schedule.next_run)})</span>
               </div>
             )}
@@ -214,7 +215,6 @@ export default function ScheduledReports({ onClose, newReportId }) {
             </button>
           </div>
 
-          {/* report history */}
           <div className="sr-history">
             <div className="sr-history-title">
               Histórico

@@ -81,11 +81,11 @@ export async function fetchReportSchedule() {
   return res.json();
 }
 
-export async function setReportSchedule(timesPerDay, enabled) {
+export async function setReportSchedule(scheduledTime, enabled) {
   const res = await fetch(`${BASE}/report-schedule`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ times_per_day: timesPerDay, enabled }),
+    body: JSON.stringify({ scheduled_time: scheduledTime, enabled }),
   });
   if (!res.ok) throw new Error('Failed to set schedule');
   return res.json();
