@@ -79,6 +79,22 @@ def _create_schema(conn):
             ALTER TABLE incidents
             ADD COLUMN IF NOT EXISTS previous_postmortem_id VARCHAR(64)
         """)
+        # Histórico de métricas para análise de tendências
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS resource_history (
+                id          BIGSERIAL    PRIMARY KEY,
+                namespace   VARCHAR(255) NOT NULL,
+                pod         VARCHAR(255) NOT NULL,
+                container   VARCHAR(255) NOT NULL,
+                cpu_m       INTEGER,
+                mem_bytes   BIGINT,
+                recorded_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rh_lookup
+            ON resource_history (namespace, pod, container, recorded_at DESC)
+        """)
     logger.info("Schema do banco verificado/criado — tabela incidents pronta")
 
 
@@ -492,6 +508,114 @@ def get_cluster_report(report_id: str) -> dict | None:
     except Exception as exc:
         logger.error("Erro ao obter relatório: %s", exc)
         return None
+
+
+# ------------------------------------------------------------------ #
+# Histórico de métricas de recursos                                   #
+# ------------------------------------------------------------------ #
+
+def record_metrics(records: list) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            for r in records:
+                cur.execute("""
+                    INSERT INTO resource_history
+                        (namespace, pod, container, cpu_m, mem_bytes, recorded_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (r["namespace"], r["pod"], r["container"],
+                      r["cpu_m"], r["mem_bytes"], r["recorded_at"]))
+        return True
+    except Exception as exc:
+        logger.error("Erro ao salvar métricas: %s", exc)
+        return False
+
+
+def get_resource_stats(namespace: str, pod: str, container: str,
+                       hours: int = 24) -> Optional[dict]:
+    """
+    Retorna estatísticas de uso de recursos das últimas N horas.
+    Agrupa dados de pods reiniciados usando o prefixo (sem sufixos de hash).
+    """
+    conn = _get_conn()
+    if not conn:
+        return None
+    try:
+        from metrics_collector import pod_prefix
+        prefix = pod_prefix(pod)
+        pod_pattern = f"{prefix}-%"
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT cpu_m, mem_bytes,
+                       EXTRACT(EPOCH FROM recorded_at)::BIGINT AS ts
+                FROM resource_history
+                WHERE namespace = %s
+                  AND (pod = %s OR pod LIKE %s)
+                  AND container = %s
+                  AND recorded_at >= NOW() - INTERVAL '1 hour' * %s
+                  AND cpu_m IS NOT NULL
+                  AND mem_bytes IS NOT NULL
+                ORDER BY recorded_at ASC
+            """, (namespace, pod, pod_pattern, container, hours))
+            rows = cur.fetchall()
+
+        if len(rows) < 3:
+            return None
+
+        cpus = [r[0] for r in rows]
+        mems = [r[1] for r in rows]
+        tss  = [r[2] for r in rows]
+
+        def pct(vals, p):
+            s = sorted(vals)
+            return s[min(int(len(s) * p / 100), len(s) - 1)]
+
+        # Regressão linear simples para taxa de crescimento de memória
+        n = len(rows)
+        t_mean = sum(tss) / n
+        m_mean = sum(mems) / n
+        num = sum((t - t_mean) * (m - m_mean) for t, m in zip(tss, mems))
+        den = sum((t - t_mean) ** 2 for t in tss)
+        growth_bytes_per_hour = (num / den * 3600) if den > 0 else 0
+
+        duration_h = round((tss[-1] - tss[0]) / 3600, 1) if len(tss) > 1 else 0
+
+        return {
+            "samples":              n,
+            "duration_hours":       duration_h,
+            "cpu_min":              min(cpus),
+            "cpu_p50":              pct(cpus, 50),
+            "cpu_p95":              pct(cpus, 95),
+            "cpu_max":              max(cpus),
+            "mem_min_mi":           min(mems) // (1024 * 1024),
+            "mem_p50_mi":           pct(mems, 50) // (1024 * 1024),
+            "mem_p95_mi":           pct(mems, 95) // (1024 * 1024),
+            "mem_max_mi":           max(mems) // (1024 * 1024),
+            "mem_growth_mb_per_hour": round(growth_bytes_per_hour / (1024 * 1024), 2),
+        }
+    except Exception as exc:
+        logger.error("Erro ao calcular estatísticas de recursos: %s", exc)
+        return None
+
+
+def purge_old_metrics(days: int = 7) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM resource_history "
+                "WHERE recorded_at < NOW() - INTERVAL '1 day' * %s",
+                (days,),
+            )
+        return True
+    except Exception as exc:
+        logger.error("Erro ao purgar métricas antigas: %s", exc)
+        return False
 
 
 def _row_to_incident(r: dict) -> dict:

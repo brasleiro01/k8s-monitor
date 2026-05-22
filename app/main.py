@@ -22,6 +22,7 @@ from config import (
 )
 from cluster_overview import fetch_cluster_overview
 from k8s_watcher import get_known_namespaces, load_k8s_config
+from metrics_collector import run_metrics_collector
 from monitor import Monitor
 from namespace_checker import check_namespace_stream
 from scheduler import ReportScheduler
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI):
     t.start()
 
     polling   = asyncio.create_task(_polling_task())
+    collector = asyncio.create_task(run_metrics_collector())
     scheduler = ReportScheduler(broadcast_fn=broadcast)
     await scheduler.start()
 
@@ -104,6 +106,7 @@ async def lifespan(app: FastAPI):
 
     monitor.stop()
     polling.cancel()
+    collector.cancel()
     await scheduler.stop()
     logger.info("Aplicação encerrada.")
 

@@ -112,7 +112,13 @@ function RecommendPanel({ rec }) {
     <div className="ov-rec-panel">
       <div className="ov-rec-panel-title">
         🤖 Sugestão de configuração
-        <span className="ov-rec-source">{rec._source === 'gemini' ? 'Gemini AI' : 'Padrão'}</span>
+        <span className="ov-rec-source">
+          {rec._source === 'gemini'
+            ? rec._has_history ? '✨ Gemini + histórico real' : 'Gemini AI'
+            : rec._source === 'fallback_com_historico'
+              ? '📊 Baseado em histórico'
+              : 'Padrão'}
+        </span>
       </div>
       {reasons.map(r => (
         <div key={r.label} className="ov-rec-reason">
