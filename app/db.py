@@ -89,34 +89,39 @@ def ensure_report_tables() -> bool:
         return False
     try:
         with conn.cursor() as cur:
+            # Step 1 — create tables with original schema (safe if already exists)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS report_schedule (
-                    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-                    times_per_day INTEGER NOT NULL DEFAULT 1,
-                    scheduled_time VARCHAR(5) NOT NULL DEFAULT '08:00',
-                    enabled BOOLEAN NOT NULL DEFAULT false,
-                    next_run TIMESTAMPTZ,
-                    updated_at TIMESTAMPTZ DEFAULT NOW()
-                );
-                INSERT INTO report_schedule (id, times_per_day, scheduled_time, enabled)
-                VALUES (1, 1, '08:00', false) ON CONFLICT DO NOTHING;
-
-                CREATE TABLE IF NOT EXISTS cluster_reports (
-                    id VARCHAR(36) PRIMARY KEY,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    namespaces JSONB NOT NULL DEFAULT '[]',
-                    overall_health VARCHAR(20),
-                    healthy_count INTEGER DEFAULT 0,
-                    warning_count INTEGER DEFAULT 0,
-                    critical_count INTEGER DEFAULT 0,
-                    total_pods INTEGER DEFAULT 0,
-                    summary TEXT,
-                    details JSONB DEFAULT '[]'
-                );
+                    id            INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                    times_per_day INTEGER      NOT NULL DEFAULT 1,
+                    enabled       BOOLEAN      NOT NULL DEFAULT false,
+                    next_run      TIMESTAMPTZ,
+                    updated_at    TIMESTAMPTZ  DEFAULT NOW()
+                )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cluster_reports (
+                    id             VARCHAR(36)  PRIMARY KEY,
+                    created_at     TIMESTAMPTZ  DEFAULT NOW(),
+                    namespaces     JSONB        NOT NULL DEFAULT '[]',
+                    overall_health VARCHAR(20),
+                    healthy_count  INTEGER      DEFAULT 0,
+                    warning_count  INTEGER      DEFAULT 0,
+                    critical_count INTEGER      DEFAULT 0,
+                    total_pods     INTEGER      DEFAULT 0,
+                    summary        TEXT,
+                    details        JSONB        DEFAULT '[]'
+                )
+            """)
+            # Step 2 — migrate: add new column if absent (runs after CREATE, before INSERT)
             cur.execute("""
                 ALTER TABLE report_schedule
                 ADD COLUMN IF NOT EXISTS scheduled_time VARCHAR(5) NOT NULL DEFAULT '08:00'
+            """)
+            # Step 3 — seed default row (scheduled_time column now guaranteed to exist)
+            cur.execute("""
+                INSERT INTO report_schedule (id, times_per_day, scheduled_time, enabled)
+                VALUES (1, 1, '08:00', false) ON CONFLICT DO NOTHING
             """)
         logger.info("Tabelas de relatórios verificadas/criadas")
         return True

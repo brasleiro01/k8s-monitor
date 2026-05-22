@@ -108,6 +108,30 @@ body {
   gap: 8px;
 }
 
+.topbar-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  padding: 0 8px;
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.topbar-clock-time {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.topbar-clock-tz {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .topbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--low); flex-shrink: 0; }
 .topbar .dot.error { background: var(--critical); animation: pulse 1.5s infinite; }
 
@@ -182,6 +206,30 @@ body {
   transition: background 0.12s, color 0.12s;
 }
 .user-menu-item:hover { background: var(--bg3); color: var(--text); }
+
+.user-menu-tz-block {
+  padding: 8px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.user-menu-tz-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.user-menu-tz-select {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.user-menu-tz-select:focus { outline: none; border-color: var(--primary); }
 
 .user-menu-overlay {
   position: fixed;

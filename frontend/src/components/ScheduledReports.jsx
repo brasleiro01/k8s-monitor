@@ -21,9 +21,10 @@ function utcTimeToLocal(timeStr) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function fmtDt(iso) {
+function fmtDt(iso, timezone = 'America/Sao_Paulo') {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('pt-BR', {
+    timeZone: timezone,
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -82,7 +83,7 @@ function NsSection({ ns }) {
   );
 }
 
-function ReportRow({ report, newReportId }) {
+function ReportRow({ report, newReportId, timezone }) {
   const [open, setOpen]       = useState(report.id === newReportId);
   const [detail, setDetail]   = useState(null);
   const [loading, setLoading] = useState(false);
@@ -103,7 +104,7 @@ function ReportRow({ report, newReportId }) {
     <div className={`sr-report sr-report-${report.overall_health}`}>
       <button className="sr-report-header" onClick={toggle}>
         <span className="sr-report-icon">{H_ICON[report.overall_health]}</span>
-        <span className="sr-report-time">{fmtDt(report.created_at)}</span>
+        <span className="sr-report-time">{fmtDt(report.created_at, timezone)}</span>
         <span className="sr-report-ns">
           {(report.namespaces || []).join(', ')}
         </span>
@@ -129,7 +130,7 @@ function ReportRow({ report, newReportId }) {
   );
 }
 
-export default function ScheduledReports({ onClose, newReportId }) {
+export default function ScheduledReports({ onClose, newReportId, timezone = 'America/Sao_Paulo' }) {
   const [schedule,   setSchedule]  = useState(null);
   const [reports,    setReports]   = useState([]);
   const [saving,     setSaving]    = useState(false);
@@ -201,7 +202,7 @@ export default function ScheduledReports({ onClose, newReportId }) {
             {schedule?.next_run && (
               <div className="sr-next-run">
                 {localOn ? 'Próxima execução:' : 'Executaria em:'}
-                {' '}<strong>{fmtDt(schedule.next_run)}</strong>
+                {' '}<strong>{fmtDt(schedule.next_run, timezone)}</strong>
                 <span className="sr-next-rel"> ({fmtRelative(schedule.next_run)})</span>
               </div>
             )}
@@ -228,7 +229,7 @@ export default function ScheduledReports({ onClose, newReportId }) {
               </div>
             ) : (
               reports.map(r => (
-                <ReportRow key={r.id} report={r} newReportId={newReportId} />
+                <ReportRow key={r.id} report={r} newReportId={newReportId} timezone={timezone} />
               ))
             )}
           </div>

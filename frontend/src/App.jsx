@@ -12,7 +12,7 @@ import ScheduledReports from './components/ScheduledReports.jsx';
 const DEFAULT_FILTERS = { severity: '', status: 'open', namespace: '', search: '', dateFrom: '', dateTo: '' };
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
-// ---- helpers de usuário/tema ---- //
+// ---- helpers de usuário/tema/timezone ---- //
 function loadUser() {
   return localStorage.getItem('k8s-monitor.current') || null;
 }
@@ -36,6 +36,46 @@ function saveTheme(name, theme) {
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
+}
+
+function loadTimezone(name) {
+  return localStorage.getItem(`k8s-monitor.tz.${name}`) || 'America/Sao_Paulo';
+}
+
+function saveTimezone(name, tz) {
+  localStorage.setItem(`k8s-monitor.tz.${name}`, tz);
+}
+
+const TZ_OPTIONS = [
+  { value: 'America/Sao_Paulo',    label: 'São Paulo (UTC-3)' },
+  { value: 'America/Manaus',       label: 'Manaus (UTC-4)' },
+  { value: 'America/Belem',        label: 'Belém / Fortaleza (UTC-3)' },
+  { value: 'America/Noronha',      label: 'Fernando de Noronha (UTC-2)' },
+  { value: 'UTC',                  label: 'UTC (UTC+0)' },
+  { value: 'America/New_York',     label: 'Nova York (UTC-5)' },
+  { value: 'Europe/Lisbon',        label: 'Lisboa (UTC+1)' },
+  { value: 'Europe/Madrid',        label: 'Madrid / Paris (UTC+2)' },
+];
+
+function TopbarClock({ timezone }) {
+  const [time, setTime] = useState('');
+  useEffect(() => {
+    const tick = () => setTime(
+      new Date().toLocaleTimeString('pt-BR', {
+        timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit',
+      })
+    );
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [timezone]);
+  const tzLabel = TZ_OPTIONS.find(o => o.value === timezone)?.label.split(' ')[0] || timezone;
+  return (
+    <div className="topbar-clock">
+      <span className="topbar-clock-time">{time}</span>
+      <span className="topbar-clock-tz">{tzLabel}</span>
+    </div>
+  );
 }
 
 function initials(name) {
@@ -109,6 +149,10 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
     return u ? loadTheme(u) : 'light';
   });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [timezone, setTimezone] = useState(() => {
+    const u = loadUser();
+    return u ? loadTimezone(u) : 'America/Sao_Paulo';
+  });
 
   useEffect(() => { applyTheme(theme); }, [theme]);
 
@@ -117,6 +161,7 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
     const t = loadTheme(name);
     setTheme(t);
     applyTheme(t);
+    setTimezone(loadTimezone(name));
     setUser(name);
   }
 
@@ -131,6 +176,11 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
     setTheme(next);
     saveTheme(user, next);
     applyTheme(next);
+  }
+
+  function handleTimezone(tz) {
+    setTimezone(tz);
+    saveTimezone(user, tz);
   }
 
   // ---- incidents ---- //
@@ -236,6 +286,8 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
           {connected ? 'Ao vivo' : 'Conectando...'}
         </div>
 
+        <TopbarClock timezone={timezone} />
+
         <div className="topbar-right">
           <button
             className={`btn-checker${checkerOpen ? ' active' : ''}`}
@@ -287,6 +339,18 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
             {showUserMenu && (
               <div className="user-menu">
                 <div className="user-menu-name">{user}</div>
+                <div className="user-menu-tz-block">
+                  <div className="user-menu-tz-label">🌍 Fuso horário</div>
+                  <select
+                    className="user-menu-tz-select"
+                    value={timezone}
+                    onChange={e => handleTimezone(e.target.value)}
+                  >
+                    {TZ_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <button className="user-menu-item" onClick={() => { setShowUserMenu(false); handleLogout(); }}>
                   Trocar usuário
                 </button>
@@ -311,6 +375,7 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
         <ScheduledReports
           onClose={() => setReportsOpen(false)}
           newReportId={newReportId}
+          timezone={timezone}
         />
       )}
 
