@@ -3,6 +3,90 @@ import threading
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
+
+def _build_auto_postmortem(incident: dict, resolved_at: str) -> str:
+    def fmt_ts(ts):
+        try:
+            return datetime.utcfromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+        except Exception:
+            return "desconhecido"
+
+    detected = fmt_ts(incident.get("last_seen") or incident.get("first_seen") or 0)
+    resolved  = resolved_at.replace("T", " ")[:19] + " UTC"
+
+    try:
+        dur = int(datetime.now().timestamp() - float(incident.get("first_seen") or 0))
+        if dur < 60:       duration = f"{dur}s"
+        elif dur < 3600:   duration = f"{dur // 60}min"
+        else:              h, m = dur // 3600, (dur % 3600) // 60; duration = f"{h}h {m}min" if m else f"{h}h"
+    except Exception:
+        duration = "desconhecido"
+
+    context    = "\n".join(incident.get("context") or []) or "(sem contexto capturado)"
+    actions    = "\n".join(f"- [x] {a}" for a in (incident.get("immediate_action") or []))
+    prevention = "\n".join(f"- {p}" for p in (incident.get("prevention") or []))
+    pod = incident.get("pod", ""); ns = incident.get("namespace", ""); sev = incident.get("severity", "")
+    inc_id = incident.get("id", ""); error_line = incident.get("error_line", "")
+    bt = "```"
+
+    return f"""# Postmortem (Auto) — {pod} — {detected}
+
+## Resumo do Incidente
+
+| Campo | Valor |
+|-------|-------|
+| **Pod / Workload** | `{pod}` |
+| **Namespace** | `{ns}` |
+| **Severidade** | `{sev}` |
+| **Detectado em** | {detected} |
+| **Resolvido em** | {resolved} |
+| **Duração** | {duration} |
+| **Hash do incidente** | `{inc_id}` |
+| **Tipo de resolução** | Auto-resolvido ✅ |
+
+## Detalhe do Erro
+
+{bt}
+{error_line}
+{bt}
+
+## Contexto
+
+{bt}
+{context}
+{bt}
+
+## Causa Raiz (análise ao detectar)
+
+{incident.get('root_cause', '_Não disponível_')}
+
+## Impacto Estimado
+
+{incident.get('estimated_impact', '_Não disponível_')}
+
+## Ações Sugeridas (para referência futura)
+
+{actions or '- Investigação manual recomendada'}
+
+## Medidas de Prevenção
+
+{prevention or '- Revisar configuração de probes e resource limits'}
+
+## Resolução
+
+O serviço se auto-recuperou após {duration} — réplicas disponíveis novamente.
+Nenhuma ação manual foi necessária desta vez, mas recomenda-se investigar a causa raiz
+para evitar recorrência.
+
+## Checklist Pós-Incidente
+
+- [x] Incidente detectado e registrado automaticamente
+- [x] Serviço auto-recuperado
+- [ ] Causa raiz investigada em detalhe
+- [ ] Medidas de prevenção implementadas
+- [ ] Alertas/monitoramento revisados
+"""
+
 import db
 from config import NAMESPACES
 from ai_analyzer import AIAnalyzer
@@ -74,6 +158,13 @@ class Monitor:
     # Replica-based incidents                                              #
     # ------------------------------------------------------------------ #
     def _on_zero_replicas(self, incident: dict):
+        # Link to a previous postmortem for the same pod, if one exists
+        prev = db.find_previous_postmortem(incident["namespace"], incident["pod"])
+        if prev:
+            incident["previous_postmortem_id"] = prev["id"]
+            logger.info("[monitor] incidente %s tem solução conhecida: %s",
+                        incident["id"][:8], prev["id"][:8])
+
         db.upsert_incident(incident)
         self._notifier.notify(
             incident["pod"], incident["namespace"],
@@ -84,19 +175,28 @@ class Monitor:
 
     def _on_recovered(self, incident_id: str):
         resolved_at = datetime.now(timezone.utc).isoformat()
+        description = "Auto-resolvido: réplicas disponíveis novamente"
+
+        # Generate auto-postmortem from saved incident data
+        full_incident = db.find_incident_by_id(incident_id)
+        postmortem_content = ""
+        postmortem_file = ""
+        if full_incident:
+            postmortem_content = _build_auto_postmortem(full_incident, resolved_at)
+            postmortem_file = (
+                f"postmortem_{resolved_at.replace('-','').replace(':','')[:15]}"
+                f"_{incident_id[:8]}.md"
+            )
+
         db.resolve_incident(
-            incident_id,
-            resolved_at,
-            "Auto-resolvido: réplicas disponíveis novamente",
-            "",
-            "",
-            "",
+            incident_id, resolved_at, description, "",
+            postmortem_file, postmortem_content,
         )
         self._broadcast_fn("update", {
-            "type":                 "resolved",
-            "id":                   incident_id,
-            "resolvedAt":           resolved_at,
-            "postmortem_file":      None,
-            "resolution_description": "Auto-resolvido: réplicas disponíveis novamente",
-            "resolution_time":      "",
+            "type":                   "resolved",
+            "id":                     incident_id,
+            "resolvedAt":             resolved_at,
+            "postmortem_file":        postmortem_file or None,
+            "resolution_description": description,
+            "resolution_time":        "",
         })

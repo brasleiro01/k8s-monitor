@@ -75,6 +75,10 @@ def _create_schema(conn):
                 created_at             TIMESTAMPTZ  DEFAULT NOW()
             )
         """)
+        cur.execute("""
+            ALTER TABLE incidents
+            ADD COLUMN IF NOT EXISTS previous_postmortem_id VARCHAR(64)
+        """)
     logger.info("Schema do banco verificado/criado — tabela incidents pronta")
 
 
@@ -148,27 +152,30 @@ def upsert_incident(incident: dict) -> bool:
                 INSERT INTO incidents (
                     id, pod, namespace, severity, first_seen, last_seen,
                     error_line, context, root_cause, immediate_action,
-                    prevention, estimated_impact, summary
+                    prevention, estimated_impact, summary, previous_postmortem_id
                 ) VALUES (
                     %(id)s, %(pod)s, %(namespace)s, %(severity)s,
                     %(timestamp)s, %(timestamp)s,
                     %(error_line)s, %(context)s, %(root_cause)s, %(immediate_action)s,
-                    %(prevention)s, %(estimated_impact)s, %(summary)s
+                    %(prevention)s, %(estimated_impact)s, %(summary)s,
+                    %(previous_postmortem_id)s
                 )
                 ON CONFLICT (id) DO UPDATE SET
-                    last_seen        = EXCLUDED.last_seen,
-                    occurrences      = incidents.occurrences + 1,
-                    severity         = EXCLUDED.severity,
-                    root_cause       = EXCLUDED.root_cause,
-                    immediate_action = EXCLUDED.immediate_action,
-                    prevention       = EXCLUDED.prevention,
-                    estimated_impact = EXCLUDED.estimated_impact,
-                    summary          = EXCLUDED.summary
+                    last_seen               = EXCLUDED.last_seen,
+                    occurrences             = incidents.occurrences + 1,
+                    severity                = EXCLUDED.severity,
+                    root_cause              = EXCLUDED.root_cause,
+                    immediate_action        = EXCLUDED.immediate_action,
+                    prevention              = EXCLUDED.prevention,
+                    estimated_impact        = EXCLUDED.estimated_impact,
+                    summary                 = EXCLUDED.summary,
+                    previous_postmortem_id  = COALESCE(incidents.previous_postmortem_id, EXCLUDED.previous_postmortem_id)
             """, {
                 **incident,
-                "context":          json.dumps(incident.get("context", [])),
-                "immediate_action": json.dumps(incident.get("immediate_action", [])),
-                "prevention":       json.dumps(incident.get("prevention", [])),
+                "context":                 json.dumps(incident.get("context", [])),
+                "immediate_action":        json.dumps(incident.get("immediate_action", [])),
+                "prevention":              json.dumps(incident.get("prevention", [])),
+                "previous_postmortem_id":  incident.get("previous_postmortem_id"),
             })
         logger.info("Incidente salvo: %s (pod=%s)", incident["id"][:8], incident.get("pod"))
         return True
@@ -282,6 +289,33 @@ def get_postmortem_content(incident_id: str) -> Optional[dict]:
 # ------------------------------------------------------------------ #
 # Helpers                                                             #
 # ------------------------------------------------------------------ #
+
+def find_previous_postmortem(namespace: str, pod: str) -> Optional[dict]:
+    """Return the most recent resolved incident with postmortem for the same ns/pod."""
+    conn = _get_conn()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, pod, postmortem_file, resolved_at
+                FROM incidents
+                WHERE namespace = %s
+                  AND (pod = %s OR pod LIKE %s)
+                  AND resolved = true
+                  AND postmortem_file IS NOT NULL
+                  AND postmortem_file != ''
+                ORDER BY resolved_at DESC NULLS LAST
+                LIMIT 1
+            """, (namespace, pod, f"{pod}-%"))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {"id": row[0], "pod": row[1], "postmortem_file": row[2]}
+    except Exception as exc:
+        logger.error("Erro ao buscar postmortem anterior: %s", exc)
+        return None
+
 
 def load_namespaces() -> list[str]:
     conn = _get_conn()
@@ -432,22 +466,23 @@ def get_cluster_report(report_id: str) -> dict | None:
 
 def _row_to_incident(r: dict) -> dict:
     return {
-        "id":                    r["id"],
-        "pod":                   r["pod"],
-        "namespace":             r["namespace"],
-        "severity":              r["severity"],
-        "timestamp":             r["last_seen"],
-        "error_line":            r["error_line"],
-        "context":               r["context"] or [],
-        "root_cause":            r["root_cause"],
-        "immediate_action":      r["immediate_action"] or [],
-        "prevention":            r["prevention"] or [],
-        "estimated_impact":      r["estimated_impact"],
-        "summary":               r["summary"],
-        "resolved":              r["resolved"],
-        "resolvedAt":            r["resolved_at"].isoformat() if r["resolved_at"] else None,
+        "id":                     r["id"],
+        "pod":                    r["pod"],
+        "namespace":              r["namespace"],
+        "severity":               r["severity"],
+        "timestamp":              r["last_seen"],
+        "error_line":             r["error_line"],
+        "context":                r["context"] or [],
+        "root_cause":             r["root_cause"],
+        "immediate_action":       r["immediate_action"] or [],
+        "prevention":             r["prevention"] or [],
+        "estimated_impact":       r["estimated_impact"],
+        "summary":                r["summary"],
+        "resolved":               r["resolved"],
+        "resolvedAt":             r["resolved_at"].isoformat() if r["resolved_at"] else None,
         "resolution_description": r["resolution_description"],
-        "resolution_time":       r["resolution_time"],
-        "postmortem_file":       r["postmortem_file"],
-        "_occurrences":          r["occurrences"],
+        "resolution_time":        r["resolution_time"],
+        "postmortem_file":        r["postmortem_file"],
+        "_occurrences":           r["occurrences"],
+        "previous_postmortem_id": r.get("previous_postmortem_id"),
     }

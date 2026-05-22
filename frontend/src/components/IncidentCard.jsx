@@ -18,6 +18,7 @@ export default function IncidentCard({ incident, onStatusChange }) {
   const [showContext, setShowContext] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
+  const [showPrevViewer, setShowPrevViewer] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleConfirmResolve({ description, resolution_time }) {
@@ -63,8 +64,27 @@ export default function IncidentCard({ incident, onStatusChange }) {
           onClose={() => setShowViewer(false)}
         />
       )}
+      {showPrevViewer && incident.previous_postmortem_id && (
+        <PostmortemViewer
+          incidentId={incident.previous_postmortem_id}
+          filename="Solução anterior"
+          onClose={() => setShowPrevViewer(false)}
+        />
+      )}
 
       <div className={`card${incident.resolved ? ' resolved' : ''}`}>
+        {!incident.resolved && incident.previous_postmortem_id && (
+          <div className="known-solution-bar">
+            <span className="known-solution-icon">💡</span>
+            <span className="known-solution-text">Este erro já ocorreu antes — há uma solução registrada</span>
+            <button
+              className="known-solution-btn"
+              onClick={e => { e.stopPropagation(); setShowPrevViewer(true); }}
+            >
+              Ver solução anterior
+            </button>
+          </div>
+        )}
         <div className="card-header" onClick={() => setOpen(o => !o)}>
           <div className={`severity-bar ${sev}`} />
           <span className={`badge ${sev}`}>{SEV_LABEL[sev] || sev}</span>
