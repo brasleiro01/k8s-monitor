@@ -95,6 +95,9 @@ def fetch_cluster_overview() -> dict:
                 total_containers += 1
         pod_ready = (ready_count == total_containers and total_containers > 0)
 
+        start_time = pod.status.start_time
+        start_time_iso = start_time.isoformat() if start_time else None
+
         pod_metrics = metrics_map.get(f"{ns}/{pod_name}", {})
 
         # containers
@@ -180,6 +183,7 @@ def fetch_cluster_overview() -> dict:
             "health": health,
             "cpu_pct": pod_cpu_pct,
             "mem_pct": pod_mem_pct,
+            "start_time": start_time_iso,
             "containers": containers,
         })
 

@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchClusterOverview, recommendPodConfig } from '../api.js';
 
+function fmtUptime(isoStr) {
+  if (!isoStr) return null;
+  const secs = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hrs < 24) return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  const remHrs = hrs % 24;
+  return remHrs > 0 ? `${days}d ${remHrs}h` : `${days}d`;
+}
+
 function barColor(pct) {
   if (pct > 80) return 'var(--critical)';
   if (pct > 60) return 'var(--medium)';
@@ -217,6 +231,9 @@ function PodRow({ pod, metricsAvailable, ns }) {
           <span className={`ov-restarts ${pod.restarts > 5 ? 'high' : pod.restarts > 2 ? 'med' : ''}`}>
             ↺ {pod.restarts}
           </span>
+        )}
+        {fmtUptime(pod.start_time) && (
+          <span className="ov-uptime" title="Tempo em execução">⏱ {fmtUptime(pod.start_time)}</span>
         )}
         <span className="ov-expand">{open ? '▾' : '▸'}</span>
       </button>

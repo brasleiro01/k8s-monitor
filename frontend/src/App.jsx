@@ -279,12 +279,14 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
           <span className="topbar-title">K8s Monitor</span>
         </div>
 
-        <div className={`dot${hasCritical ? ' error' : ''}`} />
+        {hasCritical && <div className="dot error" />}
 
-        <div className="live-badge" title={connected ? 'Conectado' : 'Conectando...'}>
-          <span className={connected ? '' : 'off'} />
-          {!connected && <span className="live-badge-text">Conectando...</span>}
-        </div>
+        {!connected && (
+          <div className="live-badge" title="Conectando...">
+            <span className="off" />
+            <span className="live-badge-text">Conectando...</span>
+          </div>
+        )}
 
         <TopbarClock timezone={timezone} />
 

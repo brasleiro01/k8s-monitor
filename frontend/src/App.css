@@ -2063,6 +2063,8 @@ main { padding: 24px; max-width: 1200px; margin: 0 auto; width: 100%; }
 .ov-restarts.med { color: var(--medium); }
 .ov-restarts.high { color: var(--critical); }
 
+.ov-uptime { font-size: 11px; color: var(--muted2); white-space: nowrap; }
+
 .ov-pod-bars { display: flex; gap: 6px; align-items: center; }
 
 .ov-bar {
