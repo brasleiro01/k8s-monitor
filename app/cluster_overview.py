@@ -20,12 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 def _health_from_pod(phase: str, restarts: int, ready: bool,
-                     cpu_pct: int | None, mem_pct: int | None) -> str:
+                     cpu_pct: int | None, mem_pct: int | None,
+                     missing_config: bool = False) -> str:
     if phase not in ("Running", "Succeeded") or restarts > 5 or not ready:
         return "critical"
     if restarts > 2 or (cpu_pct and cpu_pct > 80) or (mem_pct and mem_pct > 80):
         return "warning"
     if (cpu_pct and cpu_pct > 60) or (mem_pct and mem_pct > 60):
+        return "warning"
+    if missing_config:
         return "warning"
     return "healthy"
 
@@ -158,7 +161,13 @@ def fetch_cluster_overview() -> dict:
         pod_cpu_pct = max(cpu_pcts) if cpu_pcts else None
         pod_mem_pct = max(mem_pcts) if mem_pcts else None
 
-        health = _health_from_pod(phase, restarts, pod_ready, pod_cpu_pct, pod_mem_pct)
+        # pod has warnings if any container lacks limits or probes
+        missing_config = any(
+            c["cpu_lim"] == "N/A" or c["mem_lim"] == "N/A"
+            or not c["liveness"] or not c["readiness"]
+            for c in containers
+        )
+        health = _health_from_pod(phase, restarts, pod_ready, pod_cpu_pct, pod_mem_pct, missing_config)
         totals[health] += 1
 
         ns_map.setdefault(ns, []).append({

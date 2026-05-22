@@ -218,10 +218,6 @@ function PodRow({ pod, metricsAvailable, ns }) {
             ↺ {pod.restarts}
           </span>
         )}
-        <div className="ov-pod-bars">
-          <MiniBar pct={pod.cpu_pct} />
-          <MiniBar pct={pod.mem_pct} />
-        </div>
         <span className="ov-expand">{open ? '▾' : '▸'}</span>
       </button>
 
