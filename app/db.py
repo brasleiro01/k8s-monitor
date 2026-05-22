@@ -290,6 +290,36 @@ def get_postmortem_content(incident_id: str) -> Optional[dict]:
 # Helpers                                                             #
 # ------------------------------------------------------------------ #
 
+def update_incident_ai_analysis(incident_id: str, root_cause: str, summary: str,
+                                 immediate_action: list, prevention: list,
+                                 estimated_impact: str, severity: str) -> bool:
+    conn = _get_conn()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE incidents SET
+                    root_cause       = %s,
+                    summary          = %s,
+                    immediate_action = %s,
+                    prevention       = %s,
+                    estimated_impact = %s,
+                    severity         = %s
+                WHERE id = %s AND resolved = false
+            """, (
+                root_cause, summary,
+                json.dumps(immediate_action),
+                json.dumps(prevention),
+                estimated_impact, severity, incident_id,
+            ))
+        logger.info("Análise AI atualizada para incidente %s", incident_id[:8])
+        return True
+    except Exception as exc:
+        logger.error("Erro ao atualizar análise AI: %s", exc)
+        return False
+
+
 def find_previous_postmortem(namespace: str, pod: str) -> Optional[dict]:
     """Return the most recent resolved incident with postmortem for the same ns/pod."""
     conn = _get_conn()

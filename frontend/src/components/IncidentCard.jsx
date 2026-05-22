@@ -118,7 +118,14 @@ export default function IncidentCard({ incident, onStatusChange }) {
             </div>
 
             <div>
-              <div className="section-title">Análise de IA</div>
+              <div className="section-title">
+                Análise de IA
+                {incident._ai_enriched && (
+                  <span className="ai-enriched-tag" title="Análise baseada em logs e eventos reais do pod">
+                    🔍 análise real
+                  </span>
+                )}
+              </div>
               <div className="analysis-grid">
                 <div className="analysis-block">
                   <div className="section-title">Causa raiz</div>

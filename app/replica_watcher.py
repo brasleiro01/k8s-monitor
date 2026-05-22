@@ -111,7 +111,7 @@ class ReplicaWatcher:
                 time.sleep(retry_delay)
 
     def _check_failure_reason(self, ns: str, selector_labels: dict) -> dict:
-        """Query pods and events to identify probe/crash failures. Returns enriched info."""
+        """Query pods, conditions and events. Returns structured diagnostic data."""
         try:
             v1 = client.CoreV1Api(api_client=_new_api_client())
             label_str = ",".join(f"{k}={v}" for k, v in selector_labels.items())
@@ -119,40 +119,85 @@ class ReplicaWatcher:
 
             reasons: set[str] = set()
             probe_msgs: list[str] = []
+            events_context: list[str] = []
+            pod_names: list[str] = []
 
             for pod in pods.items:
-                # Container wait reasons (CrashLoopBackOff, ImagePullBackOff, OOMKilled…)
-                for cs in (pod.status.container_statuses or []):
-                    if cs.state and cs.state.waiting and cs.state.waiting.reason:
-                        reasons.add(cs.state.waiting.reason)
-                    if cs.state and cs.state.terminated and cs.state.terminated.reason:
-                        reasons.add(cs.state.terminated.reason)
+                pod_name = pod.metadata.name
+                pod_names.append(pod_name)
 
-                # Events for this pod
+                # Pod conditions (ContainersReady=False usually has a useful message)
+                for cond in (pod.status.conditions or []):
+                    if cond.status == "False" and cond.message:
+                        events_context.append(
+                            f"[{pod_name}] Condição {cond.type}=False: {cond.message[:150]}"
+                        )
+
+                # Container states
+                for cs in (pod.status.container_statuses or []):
+                    if cs.restart_count:
+                        events_context.append(
+                            f"[{pod_name}/{cs.name}] Reiniciou {cs.restart_count}x"
+                        )
+                    if cs.state and cs.state.waiting:
+                        r = cs.state.waiting.reason or ""
+                        if r:
+                            reasons.add(r)
+                        if cs.state.waiting.message:
+                            events_context.append(
+                                f"[{pod_name}/{cs.name}] Aguardando/{r}: "
+                                f"{cs.state.waiting.message[:150]}"
+                            )
+                    if cs.state and cs.state.terminated:
+                        r = cs.state.terminated.reason or ""
+                        if r:
+                            reasons.add(r)
+                        if cs.state.terminated.message:
+                            events_context.append(
+                                f"[{pod_name}/{cs.name}] Terminado/{r}: "
+                                f"{cs.state.terminated.message[:150]}"
+                            )
+
+                # Events for this pod (sorted newest-first, take last 12)
                 try:
-                    events = v1.list_namespaced_event(
+                    evs = v1.list_namespaced_event(
                         ns,
-                        field_selector=f"involvedObject.name={pod.metadata.name}",
+                        field_selector=f"involvedObject.name={pod_name}",
                         timeout_seconds=8,
                     )
-                    for ev in events.items:
-                        msg = (ev.message or "").lower()
-                        if ev.reason == "Unhealthy":
-                            if "liveness" in msg:
-                                probe_msgs.append(f"Liveness probe falhou: {ev.message[:120]}")
-                            elif "readiness" in msg:
-                                probe_msgs.append(f"Readiness probe falhou: {ev.message[:120]}")
-                            elif "startup" in msg:
-                                probe_msgs.append(f"Startup probe falhou: {ev.message[:120]}")
-                        elif ev.reason == "BackOff":
+                    sorted_evs = sorted(
+                        evs.items,
+                        key=lambda e: (e.last_timestamp or e.event_time or ""),
+                        reverse=True,
+                    )
+                    for ev in sorted_evs[:12]:
+                        msg = (ev.message or "").strip()
+                        reason = (ev.reason or "").strip()
+                        if not msg:
+                            continue
+                        low = msg.lower()
+                        if reason == "Unhealthy":
+                            if "liveness" in low:
+                                probe_msgs.append(f"Liveness probe falhou: {msg[:130]}")
+                            elif "readiness" in low:
+                                probe_msgs.append(f"Readiness probe falhou: {msg[:130]}")
+                            elif "startup" in low:
+                                probe_msgs.append(f"Startup probe falhou: {msg[:130]}")
+                        elif reason == "BackOff":
                             reasons.add("CrashLoopBackOff")
+                        events_context.append(f"[Evento/{reason}] {msg[:150]}")
                 except Exception:
                     pass
 
-            return {"reasons": list(reasons), "probe_msgs": probe_msgs[:4]}
+            return {
+                "reasons":        list(reasons),
+                "probe_msgs":     probe_msgs[:4],
+                "events_context": events_context[:25],
+                "pod_names":      pod_names,
+            }
         except Exception as e:
-            logger.debug("[replica-watcher] Não foi possível obter causa da falha: %s", e)
-            return {"reasons": [], "probe_msgs": []}
+            logger.debug("[replica-watcher] Não foi possível obter diagnóstico: %s", e)
+            return {"reasons": [], "probe_msgs": [], "events_context": [], "pod_names": []}
 
     def _maybe_alarm(self, kind: str, ns: str, name: str,
                      resource_key: str, inc_id: str,
@@ -242,6 +287,7 @@ class ReplicaWatcher:
                 "Configurar liveness e readiness probes corretas",
             ]
 
+        # Build context (saved to DB + used as AI input seed)
         context = [
             f"Tipo: {kind}",
             f"Réplicas desejadas (spec): {spec_replicas}",
@@ -253,6 +299,17 @@ class ReplicaWatcher:
             context.append(f"Estado dos containers: {', '.join(reasons)}")
         if probe_msgs:
             context.extend(probe_msgs)
+        context.extend(failure.get("events_context", []))
+
+        # Extract selector for background AI log-fetch (not persisted to DB)
+        selector_labels = {}
+        try:
+            if obj and obj.spec and obj.spec.selector and obj.spec.selector.match_labels:
+                selector_labels = dict(obj.spec.selector.match_labels)
+        except Exception:
+            pass
+
+        label_selector = ",".join(f"{k}={v}" for k, v in selector_labels.items()) or f"app={name}"
 
         incident = {
             "id":        inc_id,
@@ -264,9 +321,9 @@ class ReplicaWatcher:
             "context":   context,
             "root_cause": root_cause,
             "immediate_action": [
-                f"kubectl get pods -n {ns} -l {','.join(f'{k}={v}' for k, v in (obj.spec.selector.match_labels if obj and obj.spec and obj.spec.selector else {}).items()) or 'app=' + name}",
+                f"kubectl get pods -n {ns} -l {label_selector}",
                 f"kubectl describe {kind.lower()} {name} -n {ns}",
-                f"kubectl logs -l app={name} -n {ns} --previous --tail=50",
+                f"kubectl logs -l {label_selector} -n {ns} --previous --tail=50",
                 f"kubectl get events -n {ns} --sort-by=.lastTimestamp",
             ],
             "prevention": prevention,
@@ -276,6 +333,9 @@ class ReplicaWatcher:
                 + (f"probe failure detectada" if probe_msgs else
                    f"estado: {', '.join(reasons)}" if reasons else "causa desconhecida")
             ),
+            # Private: consumed by monitor, not saved to DB
+            "_selector": selector_labels,
+            "_pod_names": failure.get("pod_names", []),
         }
         self._on_zero_replicas(incident)
 

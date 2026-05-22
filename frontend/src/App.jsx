@@ -225,6 +225,19 @@ export default function App({ googleClientId = '', configuredNamespaces = [] }) 
           setIncidents(prev => prev.map(i => i.id === update.id
             ? { ...i, resolved: false, postmortem_file: null }
             : i));
+        } else if (update.type === 'ai_analysis') {
+          setIncidents(prev => prev.map(i => i.id === update.id
+            ? {
+                ...i,
+                root_cause:       update.root_cause,
+                summary:          update.summary,
+                immediate_action: update.immediate_action,
+                prevention:       update.prevention,
+                estimated_impact: update.estimated_impact,
+                severity:         update.severity,
+                _ai_enriched:     true,
+              }
+            : i));
         }
       },
       report => {
